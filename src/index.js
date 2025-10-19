@@ -10,9 +10,10 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+app.use('/api/auth', require('./routes/authRoute.js'));
+
 const PORT = process.env.PORT || 5000;
 
-// Start server after DB is connected
 (async () => {
   try {
     await connectDB();
