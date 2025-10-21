@@ -8,9 +8,9 @@ const generateRefreshToken = (user) => {
   return refreshToken;
 };
 
-const generateToken = (user) => {
+const generateAccessToken = (user) => {
   return jwt.sign(
-    { id: user._id, role: user.role, phone: user.phone },
+    { id: user._id, role: user.role, email: user.email },
     process.env.JWT_ACCESS_KEY,
     { expiresIn: '1d' }
   );
@@ -20,14 +20,14 @@ const authController = {
   //REGISTER
   register: async (req, res) => {
     try {
-      const { name, phone, password, location } = req.body;
-      const existingUser = await User.findOne({ phone });
+      const { userName, email, phone, password } = req.body;
+      const existingUser = await User.findOne({ email });
       if (existingUser) {
-        return res.status(400).json({ message: 'This phone number has registered' });
+        return res.status(400).json({ message: 'This email has registered' });
       }
 
-      const newUser = new User({ name, phone, password, location });
-      const token = generateToken(newUser);
+      const newUser = new User({ userName, email, phone, password });
+      const token = generateAccessToken(newUser);
       const refreshToken = generateRefreshToken(newUser);
       newUser.refreshToken = refreshToken;
       await newUser.save();
@@ -35,8 +35,8 @@ const authController = {
       res.status(201).json({
         user: {
           id: newUser._id,
-          name: newUser.name,
-          phone: newUser.phone,
+          userName: newUser.userName,
+          email: newUser.email,
           role: newUser.role,
         },
         token: token,
@@ -50,8 +50,8 @@ const authController = {
   //LOGIN
   login: async (req, res) => {
     try {
-      const { phone, password } = req.body;
-      const user = await User.findOne({ phone });
+      const { email, password } = req.body;
+      const user = await User.findOne({ email });
 
       if (!user) {
         return res.status(400).json({ message: 'No user' });
@@ -62,16 +62,16 @@ const authController = {
         return res.status(400).json({ message: 'Invalid phone number or password!' });
       }
 
-      const token = generateToken(user);
+      const token = generateAccessToken(user);
       const refreshToken = generateRefreshToken(user);
       user.refreshToken = refreshToken;
       await user.save();
       res.status(200).json({
         user: {
           id: user._id,
-          name: user.name,
+          userName: user.userName,
           role: user.role,
-          phone: user.phone,
+          email: user.email,
         },
         token: token,
         refreshToken,
@@ -80,6 +80,7 @@ const authController = {
       return res.status(500).json({ message: err.message });
     }
   },
+
   //REFRESH TOKEN
   refreshToken: async (req, res) => {
     const token = req.body.refreshToken;
@@ -102,7 +103,7 @@ const authController = {
         return res.status(403).json({ message: 'Invalid refresh token' });
       }
 
-      const newAccessToken = generateToken(user);
+      const newAccessToken = generateAccessToken(user);
       const newRefreshToken = generateRefreshToken(user);
 
       user.refreshToken = newRefreshToken;
@@ -116,6 +117,7 @@ const authController = {
       res.status(500).json({ message: 'Internal server error' });
     }
   },
+
   //LOGOUT
   logout: async (req, res) => {
     try {
@@ -129,7 +131,7 @@ const authController = {
       await user.save();
       return res.status(200).json({ message: 'Logged out successfully' });
     } catch (err) {
-      return res.status(403).json({ message: 'Internal server error' });
+      return res.status(500).json({ message: 'Internal server error' });
     }
   },
 };

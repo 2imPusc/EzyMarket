@@ -2,14 +2,16 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 const userSchema = new mongoose.Schema({
-  role: { type: String, enum: ['admin', 'user'], default: 'user' },
-  name: { type: String, required: true },
-  phone: { type: String, required: true, unique: true },
-  password: { type: String, required: true, minlength: 6 },
-  location: { type: String },
-  groupIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Group' }],
+  avartar: { type: String },
   createdAt: { type: Date, default: Date.now },
+  email: { type: String, required: true, unique: true },
+  groupIds: [{ type: mongoose.Schema.Types.Array, ref: 'Group' }],
+  password: { type: String, required: true, minlength: 6 },
+  phone: { type: String, unique: true },
+  role: { type: String, enum: ['admin', 'user'], default: 'user' },
   refreshToken: { type: String },
+  updatedAt: { type: Date, default: Date.now },
+  userName: { type: String, required: true },
 });
 
 userSchema.pre('save', async function (next) {
