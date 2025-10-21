@@ -1,49 +1,36 @@
-import User from '../model/userRepository.js';
 import jwt from 'jsonwebtoken';
-
-const generateRefreshToken = (user) => {
-  const refreshToken = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_REFRESH_KEY, {
-    expiresIn: '30d',
-  });
-  return refreshToken;
-};
-
-const generateAccessToken = (user) => {
-  return jwt.sign(
-    { id: user._id, role: user.role, email: user.email },
-    process.env.JWT_ACCESS_KEY,
-    { expiresIn: '1d' }
-  );
-};
+import { handleRegister } from '../services/authService.js';
+import { generateAccessToken, generateRefreshToken } from '../services/authService.js';
+import User from '../model/userRepository.js';
+import { sendVerificationEmail } from '../services/verifyEmail.js';
 
 const authController = {
   //REGISTER
   register: async (req, res) => {
     try {
       const { userName, email, phone, password } = req.body;
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
-        return res.status(400).json({ message: 'This email has registered' });
-      }
-
-      const newUser = new User({ userName, email, phone, password });
-      const token = generateAccessToken(newUser);
-      const refreshToken = generateRefreshToken(newUser);
-      newUser.refreshToken = refreshToken;
-      await newUser.save();
-
-      res.status(201).json({
-        user: {
-          id: newUser._id,
-          userName: newUser.userName,
-          email: newUser.email,
-          role: newUser.role,
-        },
-        token: token,
-        refreshToken,
-      });
+      const result = await handleRegister(userName, email, phone, password, req);
+      return res.status(result.status).json(result.data);
     } catch (err) {
       return res.status(500).json({ message: err.message });
+    }
+  },
+
+  //SEND VERIFICATION EMAIL
+  sendVerificationEmail: async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      if (user.emailVerified) {
+        return res.status(200).json({ message: 'Email already verified' });
+      }
+      await sendVerificationEmail(user, req);
+      return res.status(200).json({ message: 'Verification email sent successfully' });
+    } catch (err) {
+      return res.status(500).json({ message: 'Internal server error' });
     }
   },
 
@@ -90,7 +77,7 @@ const authController = {
 
     try {
       const user = await User.findOne({ refreshToken: token });
-      if (!user) return res.status(403).json({ message: 'Refresh token khong hop le' });
+      if (!user) return res.status(403).json({ message: 'Invalid refresh token' });
 
       const decoded = await new Promise((resolve, reject) => {
         jwt.verify(token, process.env.JWT_REFRESH_KEY, (err, decoded) => {
@@ -118,6 +105,70 @@ const authController = {
     }
   },
 
+  //UPDATE
+  update: async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const updates = req.body;
+
+      const updatedUser = await User.findByIdAndUpdate(userId, updates, { new: true });
+      if (!updatedUser) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      res.status(200).json({
+        id: updatedUser._id,
+        userName: updatedUser.userName,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        role: updatedUser.role,
+      });
+    } catch (err) {
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  },
+
+  //CHANGE PASSWORD
+  changePassword: async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { oldPassword, newPassword } = req.body;
+
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const isMatch = await user.matchPassword(oldPassword);
+      if (!isMatch) {
+        return res.status(400).json({ message: 'Old password is incorrect' });
+      }
+
+      user.password = newPassword;
+      await user.save();
+
+      res.status(200).json({ message: 'Password changed successfully' });
+    } catch (err) {
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  },
+
+  //DELETE
+  delete: async (req, res) => {
+    try {
+      const userId = req.user.id;
+
+      const deletedUser = await User.findByIdAndDelete(userId);
+      if (!deletedUser) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      res.status(200).json({ message: 'User deleted successfully' });
+    } catch (err) {
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  },
+
   //LOGOUT
   logout: async (req, res) => {
     try {
@@ -135,5 +186,4 @@ const authController = {
     }
   },
 };
-
 export default authController;

@@ -24,15 +24,25 @@
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.15.1",
+    "nodemailer": "^7.0.9",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10",
     "@eslint/js": "^9.37.0",
+    "esbuild": "^0.18.19",
     "eslint": "^9.37.0",
     "globals": "^16.4.0",
-    "prettier": "^3.3.3",
-    "esbuild": "^0.18.19"
+    "nodemon": "^3.1.10",
+    "prettier": "^3.3.3"
+  },
+  "imports": {
+    "#src/*": "./src/*",
+    "#controllers/*": "./src/controllers/*",
+    "#models/*": "./src/model/*",
+    "#utils/*": "./src/utils/*",
+    "#services/*": "./src/services/*",
+    "#routes/*": "./src/routes/*",
+    "#middlewares/*": "./src/middlewares/*"
   }
 }

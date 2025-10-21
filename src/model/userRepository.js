@@ -2,12 +2,13 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 const userSchema = new mongoose.Schema({
-  avartar: { type: String },
+  avatar: { type: String },
+  emailVerified: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   email: { type: String, required: true, unique: true },
   groupIds: [{ type: mongoose.Schema.Types.Array, ref: 'Group' }],
   password: { type: String, required: true, minlength: 6 },
-  phone: { type: String, unique: true },
+  phone: { type: String },
   role: { type: String, enum: ['admin', 'user'], default: 'user' },
   refreshToken: { type: String },
   updatedAt: { type: Date, default: Date.now },

@@ -18,7 +18,7 @@ const authMiddleware = {
   },
 
   verifyAdmin: (req, res, next) => {
-    middleWareController.verifyToken(req, res, () => {
+    authMiddleware.verifyToken(req, res, () => {
       if (req.user.role === 'admin') {
         next();
       } else {
@@ -28,7 +28,7 @@ const authMiddleware = {
   },
 
   verifyTokenAndSelfOrAdmin: (req, res, next) => {
-    middleWareController.verifyToken(req, res, () => {
+    authMiddleware.verifyToken(req, res, () => {
       if (req.user.role === 'admin' || req.user.id === req.params.id) {
         next();
       } else {
