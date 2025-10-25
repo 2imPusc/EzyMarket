@@ -2,8 +2,7 @@ import Joi from 'joi';
 
 export const validateUser = (req, res, next) => {
   const schema = Joi.object({
-    userName: Joi.string().min(3).max(30).required().messages({
-      'string.empty': 'Username cannot be empty',
+    userName: Joi.string().min(3).max(30).messages({
       'string.min': 'Username should have a minimum length of {#limit}',
       'string.max': 'Username should have a maximum length of {#limit}',
       'any.required': 'Username is required',

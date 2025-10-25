@@ -40,4 +40,13 @@ router.post(
 //VERIFY EMAIL
 router.get('/verify-email', verifyEmail);
 
+//FORGOT PASSWORD - Request reset password email
+router.post('/forgot-password', authController.forgotPassword);
+
+//RESET PASSWORD - Submit new password with token
+router.post('/reset-password', authController.resetPassword);
+
+//VERIFY RESET TOKEN - Check if token is valid (optional, for frontend)
+router.get('/verify-reset-token', authController.verifyResetToken);
+
 export default router;

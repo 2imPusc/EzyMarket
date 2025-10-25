@@ -3,13 +3,14 @@ import { handleRegister } from '../services/authService.js';
 import { generateAccessToken, generateRefreshToken } from '../services/authService.js';
 import User from '../model/userRepository.js';
 import { sendVerificationEmail } from '../services/verifyEmail.js';
+import { sendResetPasswordEmail, verifyResetToken } from '../services/forgotPassword.js';
 
 const authController = {
   //REGISTER
   register: async (req, res) => {
     try {
-      const { userName, email, phone, password } = req.body;
-      const result = await handleRegister(userName, email, phone, password, req);
+      const { email, phone, password } = req.body;
+      const result = await handleRegister({ email, phone, password, req });
       return res.status(result.status).json(result.data);
     } catch (err) {
       return res.status(500).json({ message: err.message });
@@ -182,6 +183,113 @@ const authController = {
       await user.save();
       return res.status(200).json({ message: 'Logged out successfully' });
     } catch (err) {
+      return res.status(500).json({ message: 'Internal server error' });
+    }
+  },
+
+  //FORGOT PASSWORD - Request reset password email
+  forgotPassword: async (req, res) => {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+      }
+
+      const user = await User.findOne({ email });
+      if (!user) {
+        // Không tiết lộ thông tin user có tồn tại hay không để bảo mật
+        return res.status(200).json({
+          message: 'If the email exists, a password reset link has been sent to your email',
+        });
+      }
+
+      await sendResetPasswordEmail(user, req);
+      return res.status(200).json({
+        message: 'Password reset link has been sent to your email. Please check your inbox.',
+      });
+    } catch (err) {
+      console.error('Forgot password error:', err);
+      return res.status(500).json({ message: 'Internal server error' });
+    }
+  },
+
+  //RESET PASSWORD - Verify token and update password
+  resetPassword: async (req, res) => {
+    try {
+      const { token } = req.query;
+      const { newPassword } = req.body;
+
+      if (!token) {
+        return res.status(400).json({ message: 'Reset token is required' });
+      }
+
+      if (!newPassword) {
+        return res.status(400).json({ message: 'New password is required' });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+      }
+
+      // Xác thực token
+      const { valid, decoded, error } = verifyResetToken(token);
+      if (!valid) {
+        return res.status(400).json({
+          message: 'Invalid or expired reset token',
+          error,
+        });
+      }
+
+      // Tìm user và cập nhật password
+      const user = await User.findById(decoded.id);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // Cập nhật password mới
+      user.password = newPassword;
+      // Xóa refresh token để bắt buộc đăng nhập lại
+      user.refreshToken = null;
+      await user.save();
+
+      return res.status(200).json({
+        message: 'Password has been reset successfully. Please login with your new password.',
+      });
+    } catch (err) {
+      console.error('Reset password error:', err);
+      return res.status(500).json({ message: 'Internal server error' });
+    }
+  },
+
+  //VERIFY RESET TOKEN - Kiểm tra token có hợp lệ không (cho frontend)
+  verifyResetToken: async (req, res) => {
+    try {
+      const { token } = req.query;
+
+      if (!token) {
+        return res.status(400).json({ message: 'Token is required' });
+      }
+
+      const { valid, decoded, error } = verifyResetToken(token);
+      if (!valid) {
+        return res.status(400).json({
+          message: 'Invalid or expired token',
+          error,
+        });
+      }
+
+      const user = await User.findById(decoded.id);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      return res.status(200).json({
+        message: 'Token is valid',
+        email: user.email,
+      });
+    } catch (err) {
+      console.error('Verify reset token error:', err);
       return res.status(500).json({ message: 'Internal server error' });
     }
   },

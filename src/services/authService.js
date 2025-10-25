@@ -1,7 +1,8 @@
+import jwt from 'jsonwebtoken';
 import User from '../model/userRepository.js';
 import { sendVerificationEmail } from './verifyEmail.js';
 
-export const handleRegister = async (userName, email, phone, password, req) => {
+export const handleRegister = async ({ userName, email, phone, password, req }) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) {
     if (!existingUser.emailVerified) {

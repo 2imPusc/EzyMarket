@@ -3,17 +3,20 @@ import User from '../model/userRepository.js';
 import { sendEmail } from '../utils/sendEmail.js';
 
 export const sendVerificationEmail = async (user, req) => {
-  const token = jwt.sign({ id: user._id, email: user.email }, process.env.EMAIL_VERIFY_KEY, {
-    expiresIn: '1d',
-  });
-  const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify-email?token=${token}`;
+  try {
+    const token = jwt.sign({ id: user._id, email: user.email }, process.env.EMAIL_VERIFY_KEY, {
+      expiresIn: '1d',
+    });
+    const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify-email?token=${token}`;
 
-  const mailOptions = {
-    to: user.email,
-    subject: 'Verify your email from EzyMarket',
-    html: `<p>Click <a href="${verifyUrl}">here</a> to verify your email.</p>`,
-  };
-  await sendEmail(mailOptions);
+    await sendEmail(
+      user.email,
+      'Verify your email from EzyMarket',
+      `<p>Click <a href="${verifyUrl}">here</a> to verify your email.</p>`
+    );
+  } catch (err) {
+    console.error('Error sending verification email:', err);
+  }
 };
 
 export const verifyEmail = async (req, res) => {

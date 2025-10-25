@@ -4,6 +4,7 @@ import connectDB from './config/db.js';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import authRoutes from './routes/authRoute.js';
+import groupRoutes from './routes/groupRoute.js';
 
 const app = express();
 
@@ -12,6 +13,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/groups', groupRoutes);
 
 const PORT = process.env.PORT || 5000;
 
