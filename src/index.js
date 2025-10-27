@@ -5,12 +5,16 @@ import bodyParser from 'body-parser';
 import cors from 'cors';
 import authRoutes from './routes/authRoute.js';
 import groupRoutes from './routes/groupRoute.js';
+import { swaggerUi, swaggerSpec } from './config/swagger.js';
 
 const app = express();
 
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// Swagger Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/groups', groupRoutes);
