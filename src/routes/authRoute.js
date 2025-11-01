@@ -296,7 +296,7 @@ router.put('/edit', authMiddleware.verifyTokenAndSelfOrAdmin, validateUser, auth
 //CHANGE PASSWORD
 router.put(
   '/change-password',
-  authMiddleware.verifyTokenAndSelfOrAdmin,
+  authMiddleware.verifyToken,
   authController.changePassword
 );
 

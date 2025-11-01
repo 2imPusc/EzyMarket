@@ -45,6 +45,10 @@ const authController = {
         return res.status(400).json({ message: 'No user' });
       }
 
+      if (!user.emailVerified) {
+        return res.status(403).json({ message: 'Please verify your email before logging in.' });
+      }
+
       const isMatch = await user.matchPassword(password);
       if (!isMatch) {
         return res.status(400).json({ message: 'Invalid phone number or password!' });
