@@ -10,7 +10,7 @@ export const sendResetPasswordEmail = async (user, req) => {
     expiresIn: '1h',
   });
 
-  const resetUrl = `${req.protocol}://${req.get('host')}/api/auth/reset-password?token=${token}`;
+  const resetUrl = `${req.protocol}://${req.get('host')}/api/user/reset-password?token=${token}`;
 
   const mailOptions = {
     to: user.email,

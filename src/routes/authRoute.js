@@ -129,6 +129,7 @@ router.post('/login', authController.login);
  *   post:
  *     summary: Refresh access token
  *     tags: [Authentication]
+ *     security: [{ bearerAuth: [] }]
  *     requestBody:
  *       required: true
  *       content:
@@ -169,6 +170,7 @@ router.post('/refreshToken', authMiddleware.verifyToken, authController.refreshT
  *   post:
  *     summary: Logout user
  *     tags: [Authentication]
+ *     security: [{ bearerAuth: [] }]
  *     requestBody:
  *       required: true
  *       content:
@@ -190,7 +192,7 @@ router.post('/refreshToken', authMiddleware.verifyToken, authController.refreshT
  *         description: Internal server error
  */
 //LOGOUT
-router.post('/logout', authMiddleware.verifyTokenAndSelfOrAdmin, authController.logout);
+router.post('/logout', authMiddleware.verifyToken, authController.logout);
 
 /**
  * @swagger
@@ -198,6 +200,7 @@ router.post('/logout', authMiddleware.verifyTokenAndSelfOrAdmin, authController.
  *   post:
  *     summary: Delete user account
  *     tags: [Authentication]
+ *     security: [{ bearerAuth: [] }]
  *     responses:
  *       200:
  *         description: User deleted successfully
@@ -215,6 +218,7 @@ router.post('/delete', authMiddleware.verifyTokenAndSelfOrAdmin, authController.
  *   put:
  *     summary: Update user profile
  *     tags: [Authentication]
+ *     security: [{ bearerAuth: [] }]
  *     requestBody:
  *       required: true
  *       content:
@@ -264,6 +268,7 @@ router.put('/edit', authMiddleware.verifyTokenAndSelfOrAdmin, validateUser, auth
  *   put:
  *     summary: Change user password
  *     tags: [Authentication]
+ *     security: [{ bearerAuth: [] }]
  *     requestBody:
  *       required: true
  *       content:
@@ -306,6 +311,7 @@ router.put(
  *   post:
  *     summary: Send email verification link
  *     tags: [Authentication]
+ *     security: [{ bearerAuth: [] }]
  *     responses:
  *       200:
  *         description: Verification email sent successfully or email already verified
