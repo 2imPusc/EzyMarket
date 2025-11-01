@@ -14,7 +14,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/auth/register:
+ * /api/user/register:
  *   post:
  *     summary: Register a new user
  *     tags: [Authentication]
@@ -67,7 +67,7 @@ router.post('/register', validateUser, authController.register);
 
 /**
  * @swagger
- * /api/auth/login:
+ * /api/user/login:
  *   post:
  *     summary: Login user
  *     tags: [Authentication]
@@ -125,7 +125,7 @@ router.post('/login', authController.login);
 
 /**
  * @swagger
- * /api/auth/refreshToken:
+ * /api/user/refreshToken:
  *   post:
  *     summary: Refresh access token
  *     tags: [Authentication]
@@ -165,7 +165,7 @@ router.post('/refreshToken', authMiddleware.verifyToken, authController.refreshT
 
 /**
  * @swagger
- * /api/auth/logout:
+ * /api/user/logout:
  *   post:
  *     summary: Logout user
  *     tags: [Authentication]
@@ -194,7 +194,7 @@ router.post('/logout', authMiddleware.verifyTokenAndSelfOrAdmin, authController.
 
 /**
  * @swagger
- * /api/auth/delete:
+ * /api/user/delete:
  *   post:
  *     summary: Delete user account
  *     tags: [Authentication]
@@ -211,7 +211,7 @@ router.post('/delete', authMiddleware.verifyTokenAndSelfOrAdmin, authController.
 
 /**
  * @swagger
- * /api/auth/edit:
+ * /api/user/edit:
  *   put:
  *     summary: Update user profile
  *     tags: [Authentication]
@@ -260,7 +260,7 @@ router.put('/edit', authMiddleware.verifyTokenAndSelfOrAdmin, validateUser, auth
 
 /**
  * @swagger
- * /api/auth/change-password:
+ * /api/user/change-password:
  *   put:
  *     summary: Change user password
  *     tags: [Authentication]
@@ -302,7 +302,7 @@ router.put(
 
 /**
  * @swagger
- * /api/auth/send-verification-email:
+ * /api/user/send-verification-email:
  *   post:
  *     summary: Send email verification link
  *     tags: [Authentication]
@@ -323,7 +323,7 @@ router.post(
 
 /**
  * @swagger
- * /api/auth/verify-email:
+ * /api/user/verify-email:
  *   get:
  *     summary: Verify user email with token
  *     tags: [Authentication]
@@ -350,7 +350,7 @@ router.get('/verify-email', verifyEmail);
 
 /**
  * @swagger
- * /api/auth/forgot-password:
+ * /api/user/forgot-password:
  *   post:
  *     summary: Request password reset email
  *     tags: [Authentication]
@@ -389,7 +389,7 @@ router.post('/forgot-password', authController.forgotPassword);
 
 /**
  * @swagger
- * /api/auth/reset-password:
+ * /api/user/reset-password:
  *   post:
  *     summary: Reset password with token
  *     tags: [Authentication]
@@ -438,7 +438,7 @@ router.post('/reset-password', authController.resetPassword);
 
 /**
  * @swagger
- * /api/auth/verify-reset-token:
+ * /api/user/verify-reset-token:
  *   get:
  *     summary: Verify if password reset token is valid
  *     tags: [Authentication]

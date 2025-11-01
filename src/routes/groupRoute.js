@@ -14,7 +14,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/groups/create:
+ * /api/group/create:
  *   post:
  *     summary: Create a new group
  *     tags: [Groups]
@@ -60,7 +60,7 @@ router.post(
 
 /**
  * @swagger
- * /api/groups/my-groups:
+ * /api/group/my-groups:
  *   get:
  *     summary: Get all groups where user is a member or owner
  *     tags: [Groups]
@@ -83,7 +83,7 @@ router.get('/my-groups', authMiddleware.verifyToken, groupController.getMyGroups
 
 /**
  * @swagger
- * /api/groups/{groupId}:
+ * /api/group/{groupId}:
  *   get:
  *     summary: Get group details
  *     tags: [Groups]
@@ -121,7 +121,7 @@ router.get(
 
 /**
  * @swagger
- * /api/groups/add-member:
+ * /api/group/add-member:
  *   post:
  *     summary: Add a member to group (owner only)
  *     tags: [Groups]
@@ -172,7 +172,7 @@ router.post(
 
 /**
  * @swagger
- * /api/groups/remove-member:
+ * /api/group/remove-member:
  *   delete:
  *     summary: Remove a member from group (owner only)
  *     tags: [Groups]
@@ -223,7 +223,7 @@ router.delete(
 
 /**
  * @swagger
- * /api/groups/{groupId}:
+ * /api/group/{groupId}:
  *   delete:
  *     summary: Delete a group (owner or admin only)
  *     tags: [Groups]
