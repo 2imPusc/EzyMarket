@@ -171,15 +171,41 @@ const authController = {
   //DELETE
   delete: async (req, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.params.id;
+      const currentUser = req.user;  // Từ middleware verifyTokenAndSelfOrAdmin
 
-      const deletedUser = await User.findByIdAndDelete(userId);
-      if (!deletedUser) {
+      // Validation: Check userId hợp lệ
+      if (!userId) {
+        return res.status(400).json({ message: 'User ID is required' });
+      }
+
+      const userToDelete = await User.findById(userId);
+      if (!userToDelete) {
         return res.status(404).json({ message: 'User not found' });
       }
 
+      // Bảo mật: Chỉ cho phép self hoặc admin xóa (middleware đã check, nhưng confirm lại)
+      if (currentUser.id !== userId && currentUser.role !== 'admin') {
+        return res.status(403).json({ message: 'You are not allowed to delete this user' });
+      }
+
+      // Logic đặc biệt: Ngăn admin xóa chính mình (tùy chọn, để tránh lockout)
+      if (currentUser.id === userId && currentUser.role === 'admin') {
+        return res.status(400).json({ message: 'Admin cannot delete their own account' });
+      }
+
+      // Xóa user
+      await User.findByIdAndDelete(userId);
+
+      // Nếu user xóa chính mình: Không cần invalidate refreshToken vì user đã xóa
+      if (currentUser.id === userId) {
+        return res.status(200).json({ message: 'Your account has been deleted successfully. You are now logged out.' });
+      }
+
+      // Nếu admin xóa user khác
       res.status(200).json({ message: 'User deleted successfully' });
     } catch (err) {
+      console.error('Delete user error:', err);
       res.status(500).json({ message: 'Internal server error' });
     }
   },

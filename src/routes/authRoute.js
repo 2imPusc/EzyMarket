@@ -196,21 +196,39 @@ router.post('/logout', authMiddleware.verifyToken, authController.logout);
 
 /**
  * @swagger
- * /api/user/delete:
+ * /api/user/delete/{id}:
  *   post:
- *     summary: Delete user account
+ *     summary: Delete user account (self or admin only)
  *     tags: [Authentication]
  *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the user to delete
  *     responses:
  *       200:
  *         description: User deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Your account has been deleted successfully. You are now logged out.
+ *       400:
+ *         description: Invalid request or admin cannot delete self
+ *       403:
+ *         description: Not allowed to delete this user
  *       404:
  *         description: User not found
  *       500:
  *         description: Internal server error
  */
-//DELETE
-router.post('/delete', authMiddleware.verifyTokenAndSelfOrAdmin, authController.delete);
+router.post('/delete/:id', authMiddleware.verifyTokenAndSelfOrAdmin, authController.delete);
 
 /**
  * @swagger
