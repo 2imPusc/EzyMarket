@@ -6,7 +6,6 @@ import { sendEmail } from '../utils/sendEmail.js';
  * Gửi email reset password
  */
 export const sendResetPasswordEmail = async (user, req) => {
-  console.log(process.env.EMAIL_VERIFY_KEY)
   const token = jwt.sign({ id: user._id, email: user.email }, process.env.PASSWORD_RESET_KEY, {
     expiresIn: '1h',
   });

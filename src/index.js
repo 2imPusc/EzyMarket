@@ -16,8 +16,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Swagger Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-app.use('/api/auth', authRoutes);
-app.use('/api/groups', groupRoutes);
+app.use('/api/user', authRoutes);
+app.use('/api/group', groupRoutes);
 
 const PORT = process.env.PORT || 5000;
 
