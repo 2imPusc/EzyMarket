@@ -7,7 +7,7 @@ export const sendVerificationEmail = async (user, req) => {
     const token = jwt.sign({ id: user._id, email: user.email }, process.env.EMAIL_VERIFY_KEY, {
       expiresIn: '1d',
     });
-    const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify-email?token=${token}`;
+    const verifyUrl = `${req.protocol}://${req.get('host')}/api/user/verify-email?token=${token}`;
 
     await sendEmail(
       user.email,

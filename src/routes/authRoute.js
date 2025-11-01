@@ -311,45 +311,59 @@ router.put(
  *   post:
  *     summary: Send email verification link
  *     tags: [Authentication]
- *     security: [{ bearerAuth: [] }]
+ *     security: []
  *     responses:
  *       200:
- *         description: Verification email sent successfully or email already verified
+ *         description: Verification email sent successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Verification email sent successfully. Please check your email.
+ *       400:
+ *         description: Email already verified
+ *       401:
+ *         description: Unauthorized (invalid token)
  *       404:
  *         description: User not found
  *       500:
- *         description: Internal server error
+ *         description: Internal server error or email sending failed
  */
 // SEND VERIFICATION EMAIL
 router.post(
   '/send-verification-email',
-  authMiddleware.verifyToken,
   authController.sendVerificationEmail
 );
 
 /**
  * @swagger
- * /api/user/verify-email:
- *   get:
- *     summary: Verify user email with token
+ * /api/user/send-verification-email:
+ *   post:
+ *     summary: Resend email verification link (public, no auth required)
  *     tags: [Authentication]
- *     security: []
- *     parameters:
- *       - in: query
- *         name: token
- *         required: true
- *         schema:
- *           type: string
- *         description: Email verification token
+ *     security: [] 
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email: { type: string, format: email, description: 'User email to resend verification' }
  *     responses:
  *       200:
- *         description: Email verified successfully
- *       400:
- *         description: Invalid or expired token
- *       404:
- *         description: User not found
- *       500:
- *         description: Internal server error
+ *         description: Verification email sent or already verified
+ *       400: 
+ *         description: 'Email required' 
+ *       404: 
+ *         description: 'User not found' 
+ *       500: 
+ *         description: 'Internal server error' 
  */
 //VERIFY EMAIL
 router.get('/verify-email', verifyEmail);

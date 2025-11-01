@@ -20,18 +20,28 @@ const authController = {
   //SEND VERIFICATION EMAIL
   sendVerificationEmail: async (req, res) => {
     try {
-      const userId = req.user.id;
-      const user = await User.findById(userId);
+      const { email } = req.body;
+      if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email });
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
+
       if (user.emailVerified) {
         return res.status(200).json({ message: 'Email already verified' });
       }
+
       await sendVerificationEmail(user, req);
       return res.status(200).json({ message: 'Verification email sent successfully' });
     } catch (err) {
-      return res.status(500).json({ message: 'Internal server error' });
+      console.error('Send verification email error:', err);
+      if (err.message.includes('email')) {
+        return res.status(500).json({ message: 'Failed to send email. Please try again later.' });
+      }
+      res.status(500).json({ message: 'Internal server error' });
     }
   },
 
