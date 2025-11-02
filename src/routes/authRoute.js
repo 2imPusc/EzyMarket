@@ -234,7 +234,8 @@ router.post('/delete/:id', authMiddleware.verifyTokenAndSelfOrAdmin, authControl
  * @swagger
  * /api/user/edit:
  *   put:
- *     summary: Update user profile
+ *     summary: Update user profile (including name, phone, and avatar)
+ *     description: To update the avatar, first upload the image file to the `/api/uploadthing` endpoint (using the `avatarUploader` router). Then, include the returned URL in the `avatar` field of this request's body. Other fields are optional.
  *     tags: [Authentication]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -247,38 +248,30 @@ router.post('/delete/:id', authMiddleware.verifyTokenAndSelfOrAdmin, authControl
  *               userName:
  *                 type: string
  *                 example: newusername
- *               email:
- *                 type: string
- *                 format: email
- *                 example: newemail@example.com
  *               phone:
  *                 type: string
  *                 example: "0987654321"
+ *               avatar:
+ *                 type: string
+ *                 format: uri
+ *                 description: "URL of the new avatar, obtained from UploadThing."
+ *                 example: "https://uploadthing.com/f/..."
  *     responses:
  *       200:
  *         description: User updated successfully
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 id:
- *                   type: string
- *                 userName:
- *                   type: string
- *                 email:
- *                   type: string
- *                 phone:
- *                   type: string
- *                 role:
- *                   type: string
+ *               $ref: '#/components/schemas/UserResponse' 
+ *       400:
+ *         description: Bad request (e.g., no fields to update)
+ *       401:
+ *         description: Unauthorized
  *       404:
  *         description: User not found
- *       500:
- *         description: Internal server error
  */
 // EDIT
-router.put('/edit', authMiddleware.verifyTokenAndSelfOrAdmin, validateUser, authController.update);
+router.put('/edit', authMiddleware.verifyToken, authController.update);
 
 /**
  * @swagger

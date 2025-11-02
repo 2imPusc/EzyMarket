@@ -124,7 +124,27 @@ const authController = {
   update: async (req, res) => {
     try {
       const userId = req.user.id;
-      const updates = req.body;
+      // Lấy các trường có thể cập nhật từ body
+      const { userName, phone, avatar } = req.body;
+
+      // Xây dựng đối tượng updates một cách an toàn
+      const updates = {};
+      if (userName) updates.userName = userName;
+      if (phone) updates.phone = phone;
+      
+      // Thêm logic cho avatar: chỉ cập nhật nếu nó là một chuỗi hợp lệ
+      if (avatar && typeof avatar === 'string') {
+        // Có thể thêm validation để chắc chắn đây là URL từ uploadthing nếu cần
+        updates.avatar = avatar;
+      }
+      
+      // Nếu không có gì để cập nhật, trả về lỗi
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: 'No fields to update provided' });
+      }
+
+      // Thêm updatedAt
+      updates.updatedAt = Date.now();
 
       const updatedUser = await User.findByIdAndUpdate(userId, updates, { new: true });
       if (!updatedUser) {
@@ -137,6 +157,7 @@ const authController = {
         email: updatedUser.email,
         phone: updatedUser.phone,
         role: updatedUser.role,
+        avatar: updatedUser.avatar, // Trả về avatar mới
       });
     } catch (err) {
       res.status(500).json({ message: 'Internal server error' });

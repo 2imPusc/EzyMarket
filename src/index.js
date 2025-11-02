@@ -6,6 +6,7 @@ import cors from 'cors';
 import authRoutes from './routes/authRoute.js';
 import groupRoutes from './routes/groupRoute.js';
 import { swaggerUi, swaggerSpec } from './config/swagger.js';
+import uploadRouter from './routes/upload.routes.js';
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use('/api/user', authRoutes);
 app.use('/api/group', groupRoutes);
+app.use("/api/uploadthing", uploadRouter);
 
 const PORT = process.env.PORT || 5000;
 
