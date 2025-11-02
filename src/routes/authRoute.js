@@ -275,6 +275,56 @@ router.put('/edit', authMiddleware.verifyToken, authController.update);
 
 /**
  * @swagger
+ * /api/user/get-user:
+ *   get:
+ *     summary: Get current logged-in user's profile
+ *     description: Retrieves the profile information for the user associated with the provided JWT.
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User profile retrieved successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                   example: "60d0fe4f5311236168a109ca"
+ *                 userName:
+ *                   type: string
+ *                   example: "johndoe"
+ *                 email:
+ *                   type: string
+ *                   format: email
+ *                   example: "user@example.com"
+ *                 phone:
+ *                   type: string
+ *                   example: "0123456789"
+ *                 avatar:
+ *                   type: string
+ *                   format: uri
+ *                   example: "https://uploadthing.com/f/..."
+ *                 role:
+ *                   type: string
+ *                   enum: [user, admin]
+ *                   example: "user"
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *       401:
+ *         description: Unauthorized - Token is missing or invalid.
+ *       404:
+ *         description: User not found.
+ *       500:
+ *         description: Internal server error.
+ */
+router.get('/get-user', authMiddleware.verifyToken, authController.getUser);
+
+/**
+ * @swagger
  * /api/user/change-password:
  *   put:
  *     summary: Change user password

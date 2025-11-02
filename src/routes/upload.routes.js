@@ -1,8 +1,7 @@
-// src/routes/upload.routes.js
 import { Router } from "express";
 import { createRouteHandler } from "uploadthing/express";
 
-import { ourFileRouter } from "../config/uploadthing.js"; // Import file router bạn vừa tạo
+import { ourFileRouter } from "../config/uploadthing.js"; 
 
 const uploadRouter = Router();
 
