@@ -165,7 +165,7 @@ const authController = {
   },
 
   // GET CURRENT USER PROFILE 
-  getUser: async (req, res) => {
+  me: async (req, res) => {
     try {
       const userId = req.user.id;
 
@@ -179,6 +179,55 @@ const authController = {
 
     } catch (err) {
       console.error('Get user profile error:', err);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  },
+
+  //GET USER BY EMAIL OR PHONE
+  getUserByEmailOrPhone: async (req, res) => {
+    try {
+      const { email, phone } = req.query;
+
+      // Validation: At least one parameter required
+      if (!email && !phone) {
+        return res.status(400).json({ message: 'Email or phone parameter is required' });
+      }
+
+      // Build query (exact match, case-insensitive for email)
+      const query = {};
+      if (email) {
+        query.email = email.toLowerCase();
+      }
+      if (phone) {
+        // Normalize phone: remove spaces, dashes, and handle +84/0 prefix
+        const normalizedPhone = phone.replace(/[\s\-\(\)]/g, '');
+        // Search với regex để match cả 0xxx và +84xxx
+        query.phone = new RegExp(`^(\\+84|0)?${normalizedPhone.replace(/^(\+84|0)/, '')}$`, 'i');
+      }
+
+      // Nếu cả email và phone được cung cấp, dùng OR query
+      let user;
+      if (email && phone) {
+        user = await User.findOne({ $or: [{ email: query.email }, { phone: query.phone }] })
+          .select('_id userName email phone avatar');
+      } else {
+        user = await User.findOne(query).select('_id userName email phone avatar');
+      }
+
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // Trả về thông tin public
+      res.status(200).json({
+        id: user._id,
+        userName: user.userName,
+        email: user.email,
+        phone: user.phone,
+        avatar: user.avatar,
+      });
+    } catch (err) {
+      console.error('Get user by email/phone error:', err);
       res.status(500).json({ message: 'Internal server error' });
     }
   },

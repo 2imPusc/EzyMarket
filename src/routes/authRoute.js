@@ -275,7 +275,7 @@ router.put('/edit', authMiddleware.verifyToken, authController.update);
 
 /**
  * @swagger
- * /api/user/get-user:
+ * /api/user/me:
  *   get:
  *     summary: Get current logged-in user's profile
  *     description: Retrieves the profile information for the user associated with the provided JWT.
@@ -321,7 +321,67 @@ router.put('/edit', authMiddleware.verifyToken, authController.update);
  *       500:
  *         description: Internal server error.
  */
-router.get('/get-user', authMiddleware.verifyToken, authController.getUser);
+router.get('/me', authMiddleware.verifyToken, authController.me);
+
+/**
+ * @swagger
+ * /api/user/get-user-by-email-or-phone:
+ *   get:
+ *     summary: Search user by email or phone
+ *     description: Returns public user information (id, userName, email, phone, avatar) if user exists. Requires authentication. Provide either email or phone parameter.
+ *     tags: [Authentication]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: false
+ *         schema:
+ *           type: string
+ *           format: email
+ *         description: Email address of the user to search
+ *         example: user@example.com
+ *       - in: query
+ *         name: phone
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Phone number of the user to search (with or without +84/0 prefix)
+ *         example: "0912345678"
+ *     responses:
+ *       200:
+ *         description: User found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   example: "60d0fe4f5311236168a109ca"
+ *                 userName:
+ *                   type: string
+ *                   example: "johndoe"
+ *                 email:
+ *                   type: string
+ *                   format: email
+ *                   example: "user@example.com"
+ *                 phone:
+ *                   type: string
+ *                   example: "0912345678"
+ *                 avatar:
+ *                   type: string
+ *                   format: uri
+ *                   example: "https://uploadthing.com/f/..."
+ *       400:
+ *         description: Email or phone parameter is required
+ *       401:
+ *         description: Unauthorized (invalid token)
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/get-user-by-email-or-phone', authMiddleware.verifyToken, authController.getUserByEmailOrPhone);
 
 /**
  * @swagger
