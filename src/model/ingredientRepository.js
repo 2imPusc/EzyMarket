@@ -1,5 +1,22 @@
 import mongoose from 'mongoose';
 
+export const DEFAULT_EXPIRE_DAYS = {
+  vegetables: 5,
+  fruits: 7,
+  meat: 3,
+  seafood: 2,
+  dairy: 5,
+  grains: 180,
+  spices: 365,
+  beverages: 30,
+  condiments: 180,
+  frozen: 180,
+  canned: 365,
+  bakery: 3,
+  snacks: 90,
+  other: 7,
+};
+
 const ingredientSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -36,8 +53,10 @@ const ingredientSchema = new mongoose.Schema({
   defaultExpireDays: {
     type: Number,
     required: true,
-    min: 1,  // Ít nhất 1 ngày
-    default: 7,  // Mặc định 7 ngày
+    min: 1,
+    default: function () {
+      return DEFAULT_EXPIRE_DAYS[this.foodCategory] ?? 7;
+    },
   },
   createdAt: {
     type: Date,

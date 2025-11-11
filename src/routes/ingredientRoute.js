@@ -15,50 +15,74 @@ const router = express.Router();
 /**
  * @swagger
  * components:
+ *   securitySchemes:
+ *     bearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
+ *
  *   schemas:
  *     Ingredient:
  *       type: object
- *       required:
- *         - name
- *         - foodCategory
  *       properties:
  *         _id:
  *           type: string
- *           description: Auto-generated ingredient ID
+ *           example: "64f1a2b3c4d5e6f7890a1234"
  *         name:
  *           type: string
- *           description: Ingredient name (unique, lowercase)
  *           example: "tomato"
  *         imageURL:
  *           type: string
  *           format: uri
- *           description: URL of ingredient image
- *           example: "https://uploadthing.com/f/..."
+ *           example: "https://cdn.example.com/ingredients/tomato.jpg"
  *         foodCategory:
  *           type: string
- *           enum: [vegetables, fruits, meat, seafood, dairy, grains, spices, beverages, condiments, frozen, canned, bakery, snacks, other]
- *           description: Food category
  *           example: "vegetables"
  *         defaultExpireDays:
  *           type: integer
- *           minimum: 1
- *           description: Default expiration days
- *           example: 7
+ *           example: 5
  *         createdAt:
  *           type: string
  *           format: date-time
  *         updatedAt:
  *           type: string
  *           format: date-time
+ *
+ *     IngredientListResponse:
+ *       type: object
+ *       properties:
+ *         ingredients:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/Ingredient'
+ *         pagination:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *             page:
+ *               type: integer
+ *             limit:
+ *               type: integer
+ *             totalPages:
+ *               type: integer
+ *
+ *     ErrorResponse:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *
  */
 
 /**
  * @swagger
- * /api/ingredients:
+ * /api/ingredients/create:
  *   post:
- *     summary: Create a new ingredient (Admin only)
+ *     summary: Create a new ingredient (Admin only), defaultExpireDays is optional override for default expire days (if omitted, server uses mapping)
  *     tags: [Ingredients]
- *     security: [{ bearerAuth: [] }]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -69,98 +93,171 @@ const router = express.Router();
  *               - name
  *               - foodCategory
  *             properties:
- *               name: { type: string, example: "tomato" }
- *               imageURL: { type: string, format: uri }
- *               foodCategory: { type: string, enum: [vegetables, fruits, meat, seafood, dairy, grains, spices, beverages, condiments, frozen, canned, bakery, snacks, other] }
- *               defaultExpireDays: { type: integer, minimum: 1, default: 7 }
+ *               name:
+ *                 type: string
+ *                 example: "tomato"
+ *                 description: Unique ingredient name (case-insensitive stored lowercased)
+ *               imageURL:
+ *                 type: string
+ *                 format: uri
+ *                 example: "https://cdn.example.com/ingredients/tomato.jpg"
+ *               foodCategory:
+ *                 type: string
+ *                 example: "vegetables"
+ *                 description: One of predefined categories
+ *               defaultExpireDays:
+ *                 type: integer
+ *                 example: 5
+ *                 description: Optional override for default expire days (if omitted, server uses mapping)
  *     responses:
- *       201:
+ *       '201':
  *         description: Ingredient created successfully
- *       400: { description: Invalid input or duplicate name }
- *       401: { description: Unauthorized }
- *       500: { description: Internal server error }
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Ingredient'
+ *       '400':
+ *         description: Validation error or duplicate name
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '401':
+ *         description: Unauthorized
+ *       '500':
+ *         description: Internal server error
  */
-router.post('/', authMiddleware.verifyToken, validateIngredient, authMiddleware.verifyAdmin, ingredientController.create);
+router.post('/create', authMiddleware.verifyToken, validateIngredient, authMiddleware.verifyAdmin, ingredientController.create);
 
 /**
  * @swagger
- * /api/ingredients:
+ * /api/ingredients/get:
  *   get:
- *     summary: Get all ingredients (with pagination and filters)
+ *     summary: Get all ingredients (pagination, filter, search)
  *     tags: [Ingredients]
- *     security: [{ bearerAuth: [] }]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
- *         schema: { type: integer, default: 1 }
+ *         schema:
+ *           type: integer
+ *           default: 1
  *         description: Page number
  *       - in: query
  *         name: limit
- *         schema: { type: integer, default: 20 }
+ *         schema:
+ *           type: integer
+ *           default: 20
  *         description: Items per page
  *       - in: query
  *         name: category
- *         schema: { type: string }
- *         description: Filter by food category
+ *         schema:
+ *           type: string
+ *         description: Filter by foodCategory
  *       - in: query
  *         name: search
- *         schema: { type: string }
- *         description: Search by name (partial match)
+ *         schema:
+ *           type: string
+ *         description: Partial case-insensitive match against name
  *     responses:
- *       200:
- *         description: List of ingredients
- *       401: { description: Unauthorized }
- *       500: { description: Internal server error }
+ *       '200':
+ *         description: List of ingredients with pagination
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/IngredientListResponse'
+ *       '401':
+ *         description: Unauthorized
+ *       '500':
+ *         description: Internal server error
  */
-router.get('/', authMiddleware.verifyToken, ingredientController.getAll);
+router.get('/get', authMiddleware.verifyToken, ingredientController.getAll);
 
 /**
  * @swagger
  * /api/ingredients/categories:
  *   get:
- *     summary: Get list of food categories
+ *     summary: Get list of supported food categories
  *     tags: [Ingredients]
- *     security: [{ bearerAuth: [] }]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
- *       200:
- *         description: List of categories
- *       500: { description: Internal server error }
+ *       '200':
+ *         description: Array of category keys
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 categories:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                     example: "vegetables"
+ *       '401':
+ *         description: Unauthorized
+ *       '500':
+ *         description: Internal server error
  */
 router.get('/categories', authMiddleware.verifyToken, ingredientController.getCategories);
 
 /**
  * @swagger
- * /api/ingredients/{id}:
+ * /api/ingredients/get/{id}:
  *   get:
  *     summary: Get ingredient by ID
  *     tags: [Ingredients]
- *     security: [{ bearerAuth: [] }]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: string }
- *         description: Ingredient ID
+ *         schema:
+ *           type: string
+ *         description: Ingredient ObjectId
  *     responses:
- *       200: { description: Ingredient details }
- *       400: { description: Invalid ID }
- *       404: { description: Ingredient not found }
- *       500: { description: Internal server error }
+ *       '200':
+ *         description: Ingredient details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Ingredient'
+ *       '400':
+ *         description: Invalid ID
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '404':
+ *         description: Ingredient not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '401':
+ *         description: Unauthorized
+ *       '500':
+ *         description: Internal server error
  */
-router.get('/:id', authMiddleware.verifyToken, ingredientController.getById);
+router.get('/get/:id', authMiddleware.verifyToken, ingredientController.getById);
 
 /**
  * @swagger
- * /api/ingredients/{id}:
+ * /api/ingredients/edit/{id}:
  *   put:
- *     summary: Update ingredient (Admin only)
+ *     summary: Update ingredient (Admin only), defaultExpireDays is optional override for default expire days (if omitted, server uses mapping)
  *     tags: [Ingredients]
- *     security: [{ bearerAuth: [] }]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
+ *         description: Ingredient ObjectId
  *     requestBody:
  *       required: true
  *       content:
@@ -168,35 +265,71 @@ router.get('/:id', authMiddleware.verifyToken, ingredientController.getById);
  *           schema:
  *             type: object
  *             properties:
- *               name: { type: string }
- *               imageURL: { type: string }
- *               foodCategory: { type: string }
- *               defaultExpireDays: { type: integer }
+ *               name:
+ *                 type: string
+ *                 example: "tomato"
+ *               imageURL:
+ *                 type: string
+ *                 format: uri
+ *               foodCategory:
+ *                 type: string
+ *               defaultExpireDays:
+ *                 type: integer
  *     responses:
- *       200: { description: Ingredient updated }
- *       400: { description: Invalid input }
- *       404: { description: Not found }
- *       500: { description: Internal server error }
+ *       '200':
+ *         description: Ingredient updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Ingredient'
+ *       '400':
+ *         description: Validation error or duplicate name
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '404':
+ *         description: Ingredient not found
+ *       '401':
+ *         description: Unauthorized
+ *       '500':
+ *         description: Internal server error
  */
-router.put('/:id', authMiddleware.verifyToken, authMiddleware.verifyAdmin, ingredientController.update);
+router.put('/edit/:id', authMiddleware.verifyToken, authMiddleware.verifyAdmin, ingredientController.update);
 
 /**
  * @swagger
- * /api/ingredients/{id}:
+ * /api/ingredients/delete/{id}:
  *   delete:
  *     summary: Delete ingredient (Admin only)
  *     tags: [Ingredients]
- *     security: [{ bearerAuth: [] }]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
+ *         description: Ingredient ObjectId
  *     responses:
- *       200: { description: Ingredient deleted }
- *       404: { description: Not found }
- *       500: { description: Internal server error }
+ *       '200':
+ *         description: Ingredient deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Ingredient deleted successfully"
+ *       '404':
+ *         description: Ingredient not found
+ *       '401':
+ *         description: Unauthorized
+ *       '500':
+ *         description: Internal server error
  */
-router.delete('/:id', authMiddleware.verifyToken, authMiddleware.verifyAdmin, ingredientController.delete);
+router.delete('/delete/:id', authMiddleware.verifyToken, authMiddleware.verifyAdmin, ingredientController.delete);
 
 export default router;

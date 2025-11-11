@@ -1,4 +1,5 @@
 import Ingredient from '../model/ingredientRepository.js';
+import { DEFAULT_EXPIRE_DAYS } from '../model/ingredientRepository.js';
 
 const ingredientController = {
   // CREATE - Thêm nguyên liệu mới
@@ -6,24 +7,24 @@ const ingredientController = {
     try {
       const { name, imageURL, foodCategory, defaultExpireDays } = req.body;
 
-      // Validation
       if (!name || !foodCategory) {
         return res.status(400).json({ message: 'Name and foodCategory are required' });
       }
 
-      // Check duplicate name
       const existingIngredient = await Ingredient.findOne({ name: name.toLowerCase() });
       if (existingIngredient) {
         return res.status(400).json({ message: 'Ingredient with this name already exists' });
       }
 
-      // Tạo ingredient mới
-      const newIngredient = new Ingredient({
+      const ingredientData = {
         name: name.toLowerCase(),
         imageURL: imageURL || null,
         foodCategory,
-        defaultExpireDays: defaultExpireDays || 7,
-      });
+        // only include if provided so model default function runs otherwise
+      };
+      if (defaultExpireDays !== undefined) ingredientData.defaultExpireDays = defaultExpireDays;
+
+      const newIngredient = new Ingredient(ingredientData);
 
       await newIngredient.save();
       res.status(201).json({
@@ -97,13 +98,11 @@ const ingredientController = {
       const { id } = req.params;
       const { name, imageURL, foodCategory, defaultExpireDays } = req.body;
 
-      // Tìm ingredient
       const ingredient = await Ingredient.findById(id);
       if (!ingredient) {
         return res.status(404).json({ message: 'Ingredient not found' });
       }
 
-      // Check duplicate name nếu đổi tên
       if (name && name.toLowerCase() !== ingredient.name) {
         const duplicate = await Ingredient.findOne({ name: name.toLowerCase() });
         if (duplicate) {
@@ -112,10 +111,21 @@ const ingredientController = {
         ingredient.name = name.toLowerCase();
       }
 
-      // Update các field khác
       if (imageURL !== undefined) ingredient.imageURL = imageURL;
-      if (foodCategory) ingredient.foodCategory = foodCategory;
-      if (defaultExpireDays) ingredient.defaultExpireDays = defaultExpireDays;
+
+      // Nếu đổi category
+      if (foodCategory && foodCategory !== ingredient.foodCategory) {
+        ingredient.foodCategory = foodCategory;
+        // Nếu client không cung cấp defaultExpireDays thì set theo mapping
+        if (defaultExpireDays === undefined || defaultExpireDays === null) {
+          ingredient.defaultExpireDays = DEFAULT_EXPIRE_DAYS[foodCategory] ?? 7;
+        }
+      }
+
+      // Nếu client cung cấp explicit defaultExpireDays -> ghi đè
+      if (defaultExpireDays !== undefined && defaultExpireDays !== null) {
+        ingredient.defaultExpireDays = defaultExpireDays;
+      }
 
       await ingredient.save();
       res.status(200).json({
