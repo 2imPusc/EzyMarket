@@ -155,6 +155,7 @@ const ingredientController = {
     }
   },
 
+  // TODO: Need to review
   // GET CATEGORIES - Lấy danh sách các categories
   getCategories: async (req, res) => {
     try {
