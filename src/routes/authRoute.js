@@ -196,8 +196,8 @@ router.post('/logout', authMiddleware.verifyToken, authController.logout);
 
 /**
  * @swagger
- * /api/user/delete/{id}:
- *   post:
+ * /api/user/{id}:
+ *   delete:
  *     summary: Delete user account (self or admin only)
  *     tags: [Authentication]
  *     security: [{ bearerAuth: [] }]
@@ -228,11 +228,11 @@ router.post('/logout', authMiddleware.verifyToken, authController.logout);
  *       500:
  *         description: Internal server error
  */
-router.post('/delete/:id', authMiddleware.verifyTokenAndSelfOrAdmin, authController.delete);
+router.delete('/:id', authMiddleware.verifyTokenAndSelfOrAdmin, authController.delete);
 
 /**
  * @swagger
- * /api/user/edit:
+ * /api/user/me:
  *   put:
  *     summary: Update user profile (including name, phone, and avatar)
  *     description: To update the avatar, first upload the image file to the `/api/uploadthing` endpoint (using the `avatarUploader` router). Then, include the returned URL in the `avatar` field of this request's body. Other fields are optional.
@@ -262,7 +262,7 @@ router.post('/delete/:id', authMiddleware.verifyTokenAndSelfOrAdmin, authControl
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/UserResponse' 
+ *               $ref: '#/components/schemas/UserResponse'
  *       400:
  *         description: Bad request (e.g., no fields to update)
  *       401:
@@ -271,7 +271,7 @@ router.post('/delete/:id', authMiddleware.verifyTokenAndSelfOrAdmin, authControl
  *         description: User not found
  */
 // EDIT
-router.put('/edit', authMiddleware.verifyToken, authController.update);
+router.put('/me', authMiddleware.verifyToken, authController.update);
 
 /**
  * @swagger
@@ -381,7 +381,11 @@ router.get('/me', authMiddleware.verifyToken, authController.me);
  *       500:
  *         description: Internal server error
  */
-router.get('/get-user-by-email-or-phone', authMiddleware.verifyToken, authController.getUserByEmailOrPhone);
+router.get(
+  '/get-user-by-email-or-phone',
+  authMiddleware.verifyToken,
+  authController.getUserByEmailOrPhone
+);
 
 /**
  * @swagger
@@ -420,11 +424,7 @@ router.get('/get-user-by-email-or-phone', authMiddleware.verifyToken, authContro
  *         description: Internal server error
  */
 //CHANGE PASSWORD
-router.put(
-  '/change-password',
-  authMiddleware.verifyToken,
-  authController.changePassword
-);
+router.put('/change-password', authMiddleware.verifyToken, authController.changePassword);
 
 /**
  * @swagger
@@ -454,10 +454,7 @@ router.put(
  *         description: Internal server error or email sending failed
  */
 // SEND VERIFICATION EMAIL
-router.post(
-  '/send-verification-email',
-  authController.sendVerificationEmail
-);
+router.post('/send-verification-email', authController.sendVerificationEmail);
 
 /**
  * @swagger
@@ -465,7 +462,7 @@ router.post(
  *   post:
  *     summary: Resend email verification link (public, no auth required)
  *     tags: [Authentication]
- *     security: [] 
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -479,12 +476,12 @@ router.post(
  *     responses:
  *       200:
  *         description: Verification email sent or already verified
- *       400: 
- *         description: 'Email required' 
- *       404: 
- *         description: 'User not found' 
- *       500: 
- *         description: 'Internal server error' 
+ *       400:
+ *         description: 'Email required'
+ *       404:
+ *         description: 'User not found'
+ *       500:
+ *         description: 'Internal server error'
  */
 //VERIFY EMAIL
 router.get('/verify-email', verifyEmail);

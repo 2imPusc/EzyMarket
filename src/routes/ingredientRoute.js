@@ -77,7 +77,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/ingredients/create:
+ * /api/ingredients:
  *   post:
  *     summary: Create a new ingredient (Admin only), defaultExpireDays is optional override for default expire days (if omitted, server uses mapping)
  *     tags: [Ingredients]
@@ -127,11 +127,17 @@ const router = express.Router();
  *       '500':
  *         description: Internal server error
  */
-router.post('/create', authMiddleware.verifyToken, validateIngredient, authMiddleware.verifyAdmin, ingredientController.create);
+router.post(
+  '/',
+  authMiddleware.verifyToken,
+  validateIngredient,
+  authMiddleware.verifyAdmin,
+  ingredientController.create
+);
 
 /**
  * @swagger
- * /api/ingredients/get:
+ * /api/ingredients:
  *   get:
  *     summary: Get all ingredients (pagination, filter, search)
  *     tags: [Ingredients]
@@ -172,7 +178,7 @@ router.post('/create', authMiddleware.verifyToken, validateIngredient, authMiddl
  *       '500':
  *         description: Internal server error
  */
-router.get('/get', authMiddleware.verifyToken, ingredientController.getAll);
+router.get('/', authMiddleware.verifyToken, ingredientController.getAll);
 
 /**
  * @swagger
@@ -204,7 +210,7 @@ router.get('/categories', authMiddleware.verifyToken, ingredientController.getCa
 
 /**
  * @swagger
- * /api/ingredients/get/{id}:
+ * /api/ingredients/{id}:
  *   get:
  *     summary: Get ingredient by ID
  *     tags: [Ingredients]
@@ -241,11 +247,11 @@ router.get('/categories', authMiddleware.verifyToken, ingredientController.getCa
  *       '500':
  *         description: Internal server error
  */
-router.get('/get/:id', authMiddleware.verifyToken, ingredientController.getById);
+router.get('/:id', authMiddleware.verifyToken, ingredientController.getById);
 
 /**
  * @swagger
- * /api/ingredients/edit/{id}:
+ * /api/ingredients/{id}:
  *   put:
  *     summary: Update ingredient (Admin only), defaultExpireDays is optional override for default expire days (if omitted, server uses mapping)
  *     tags: [Ingredients]
@@ -295,11 +301,16 @@ router.get('/get/:id', authMiddleware.verifyToken, ingredientController.getById)
  *       '500':
  *         description: Internal server error
  */
-router.put('/edit/:id', authMiddleware.verifyToken, authMiddleware.verifyAdmin, ingredientController.update);
+router.put(
+  '/:id',
+  authMiddleware.verifyToken,
+  authMiddleware.verifyAdmin,
+  ingredientController.update
+);
 
 /**
  * @swagger
- * /api/ingredients/delete/{id}:
+ * /api/ingredients/{id}:
  *   delete:
  *     summary: Delete ingredient (Admin only)
  *     tags: [Ingredients]
@@ -330,6 +341,11 @@ router.put('/edit/:id', authMiddleware.verifyToken, authMiddleware.verifyAdmin, 
  *       '500':
  *         description: Internal server error
  */
-router.delete('/delete/:id', authMiddleware.verifyToken, authMiddleware.verifyAdmin, ingredientController.delete);
+router.delete(
+  '/:id',
+  authMiddleware.verifyToken,
+  authMiddleware.verifyAdmin,
+  ingredientController.delete
+);
 
 export default router;

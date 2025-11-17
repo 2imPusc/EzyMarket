@@ -14,7 +14,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/group/create:
+ * /api/groups:
  *   post:
  *     summary: Create a new group
  *     tags: [Groups]
@@ -52,7 +52,7 @@ const router = express.Router();
  *         description: Internal server error
  */
 router.post(
-  '/create',
+  '/',
   authMiddleware.verifyToken,
   groupMiddleware.validateGroupInput,
   groupController.create
@@ -60,7 +60,7 @@ router.post(
 
 /**
  * @swagger
- * /api/group/my-groups:
+ * /api/groups/mine:
  *   get:
  *     summary: Get all groups where user is a member or owner
  *     tags: [Groups]
@@ -79,11 +79,11 @@ router.post(
  *       500:
  *         description: Internal server error
  */
-router.get('/my-groups', authMiddleware.verifyToken, groupController.getMyGroups);
+router.get('/mine', authMiddleware.verifyToken, groupController.getMyGroups);
 
 /**
  * @swagger
- * /api/group/{groupId}:
+ * /api/groups/{groupId}:
  *   get:
  *     summary: Get group details
  *     tags: [Groups]
@@ -121,7 +121,7 @@ router.get(
 
 /**
  * @swagger
- * /api/group/add-member:
+ * /api/groups/{groupId}/members:
  *   post:
  *     summary: Add a member to group (owner only)
  *     tags: [Groups]
@@ -162,7 +162,7 @@ router.get(
  *         description: Internal server error
  */
 router.post(
-  '/add-member',
+  '/:groupId/members',
   authMiddleware.verifyToken,
   groupMiddleware.validateMemberInput,
   groupMiddleware.checkGroupExists,
@@ -172,7 +172,7 @@ router.post(
 
 /**
  * @swagger
- * /api/group/remove-member:
+ * /api/groups/{groupId}/members/{userId}:
  *   delete:
  *     summary: Remove a member from group (owner only)
  *     tags: [Groups]
@@ -213,7 +213,7 @@ router.post(
  *         description: Internal server error
  */
 router.delete(
-  '/remove-member',
+  '/:groupId/members/:userId',
   authMiddleware.verifyToken,
   groupMiddleware.validateMemberInput,
   groupMiddleware.checkGroupExists,
@@ -223,7 +223,7 @@ router.delete(
 
 /**
  * @swagger
- * /api/group/{groupId}:
+ * /api/groups/{groupId}:
  *   delete:
  *     summary: Delete a group (owner or admin only)
  *     tags: [Groups]

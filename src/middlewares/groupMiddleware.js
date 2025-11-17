@@ -111,7 +111,8 @@ const groupMiddleware = {
   },
 
   validateMemberInput: (req, res, next) => {
-    const { groupId, userId } = req.body;
+    const groupId = req.params.groupId || req.body.groupId;
+    const userId = req.params.userId || req.body.userId;
 
     if (!groupId || !userId) {
       return res.status(400).json({ message: 'GroupId and userId are required' });

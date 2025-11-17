@@ -69,7 +69,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/units/create:
+ * /api/units:
  *   post:
  *     summary: Create a new unit (Admin only)
  *     tags: [Units]
@@ -104,16 +104,11 @@ const router = express.Router();
  *       '500':
  *         description: Internal server error
  */
-router.post(
-  '/create',
-  authMiddleware.verifyToken,
-  authMiddleware.verifyAdmin,
-  unitController.create
-);
+router.post('/', authMiddleware.verifyToken, authMiddleware.verifyAdmin, unitController.create);
 
 /**
  * @swagger
- * /api/units/get:
+ * /api/units:
  *   get:
  *     summary: Get units with pagination
  *     tags: [Units]
@@ -130,7 +125,7 @@ router.post(
  *         name: limit
  *         schema:
  *           type: integer
- *           default: 20
+ *           default: 10
  *         description: Items per page (max 100)
  *     responses:
  *       '200':
@@ -144,11 +139,11 @@ router.post(
  *       '500':
  *         description: Internal server error
  */
-router.get('/get', authMiddleware.verifyToken, unitController.getAll);
+router.get('/', authMiddleware.verifyToken, unitController.getAll);
 
 /**
  * @swagger
- * /api/units/edit/{id}:
+ * /api/units/{id}:
  *   put:
  *     summary: Update a unit (Admin only)
  *     tags: [Units]
@@ -187,16 +182,11 @@ router.get('/get', authMiddleware.verifyToken, unitController.getAll);
  *       '500':
  *         description: Internal server error
  */
-router.put(
-  '/edit/:id',
-  authMiddleware.verifyToken,
-  authMiddleware.verifyAdmin,
-  unitController.update
-);
+router.put('/:id', authMiddleware.verifyToken, authMiddleware.verifyAdmin, unitController.update);
 
 /**
  * @swagger
- * /api/units/delete/{id}:
+ * /api/units/{id}:
  *   delete:
  *     summary: Delete a unit (Admin only)
  *     tags: [Units]
@@ -220,7 +210,7 @@ router.put(
  *         description: Internal server error
  */
 router.delete(
-  '/delete/:id',
+  '/:id',
   authMiddleware.verifyToken,
   authMiddleware.verifyAdmin,
   unitController.delete
@@ -228,8 +218,8 @@ router.delete(
 
 /**
  * @swagger
- * /api/units/delete-many:
- *   delete:
+ * /api/units/batch-delete:
+ *   post:
  *     summary: Delete multiple units by IDs (Admin only)
  *     tags: [Units]
  *     security:
@@ -254,8 +244,8 @@ router.delete(
  *       '500':
  *         description: Internal server error
  */
-router.delete(
-  '/delete-many',
+router.post(
+  '/batch-delete',
   authMiddleware.verifyToken,
   authMiddleware.verifyAdmin,
   unitController.deleteMany
