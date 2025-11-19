@@ -104,33 +104,90 @@ const recipeController = {
     try {
       const { recipeId } = req.params;
       if (!mongoose.Types.ObjectId.isValid(recipeId)) return res.status(400).json({ message: 'Invalid recipe ID' });
+
       const recipe = await Recipe.findById(recipeId);
       if (!recipe) return res.status(404).json({ message: 'Recipe not found' });
+
       const userId = req.user.id;
-      if (recipe.creatorId.toString() !== userId && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
-
-      const updatable = ['title', 'description', 'imageUrl', 'prepTime', 'cookTime', 'servings', 'directions', 'ingredients', 'tag'];
-      updatable.forEach((k) => {
-        if (req.body[k] !== undefined) recipe[k] = req.body[k];
-      });
-
-      // normalize ingredient names if provided
-      if (req.body.ingredients) {
-        recipe.ingredients = req.body.ingredients.map((i) => ({
-          ingredientId: i.ingredientId && mongoose.Types.ObjectId.isValid(i.ingredientId) ? i.ingredientId : undefined,
-          name: (i.name || '').toLowerCase().trim(),
-          quantity: i.quantity ?? null,
-          unit: i.unit ?? null,
-          note: i.note ?? null,
-          optional: !!i.optional,
-        }));
+      if (recipe.creatorId.toString() !== userId && req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
+      // Updatable scalar fields
+      const updatable = ['title', 'description', 'imageUrl', 'prepTime', 'cookTime', 'servings', 'directions', 'tag'];
+      updatable.forEach((k) => {
+        if (req.body[k] !== undefined) {
+          if (k === 'title' && typeof req.body.title === 'string') recipe.title = req.body.title.trim();
+          else recipe[k] = req.body[k];
+        }
+      });
+
+      // If ingredients provided -> replace after resolving/validating each item
+      if (req.body.ingredients !== undefined) {
+        if (!Array.isArray(req.body.ingredients)) {
+          return res.status(400).json({ message: 'ingredients must be an array' });
+        }
+
+        const newIngredients = [];
+        for (const item of req.body.ingredients) {
+          if (!item || ( !item.ingredientId && !item.name )) {
+            return res.status(400).json({ message: 'Each ingredient must include ingredientId or name' });
+          }
+
+          // Validate and resolve ingredientId if provided
+          let ingredientId = undefined;
+          let name = item.name ? String(item.name).trim() : '';
+          if (item.ingredientId) {
+            if (!mongoose.Types.ObjectId.isValid(item.ingredientId)) {
+              return res.status(400).json({ message: `Invalid ingredientId: ${item.ingredientId}` });
+            }
+            ingredientId = item.ingredientId;
+            const ingDoc = await Ingredient.findById(ingredientId).select('name');
+            if (!ingDoc) return res.status(400).json({ message: `ingredientId ${ingredientId} not found` });
+            name = String(ingDoc.name).toLowerCase().trim();
+          } else {
+            // normalize provided name
+            name = String(name).toLowerCase();
+            if (!name) return res.status(400).json({ message: 'Ingredient name is required when no ingredientId provided' });
+          }
+
+          // Validate and resolve unitId if provided
+          let unit = item.unit ? String(item.unit).trim() : null;
+          let unitId = undefined;
+          let unitAbbreviation = null;
+          if (item.unitId) {
+            if (!mongoose.Types.ObjectId.isValid(item.unitId)) {
+              return res.status(400).json({ message: `Invalid unitId: ${item.unitId}` });
+            }
+            unitId = item.unitId;
+            const unitDoc = await Unit.findById(unitId).select('name abbreviation');
+            if (!unitDoc) return res.status(400).json({ message: `unitId ${unitId} not found` });
+            unit = unitDoc.name ?? unit;
+            unitAbbreviation = unitDoc.abbreviation ?? null;
+          }
+
+          newIngredients.push({
+            ingredientId: ingredientId ?? undefined,
+            name,
+            quantity: item.quantity ?? null,
+            unit: unit ?? null,
+            unitId: unitId ?? undefined,
+            unitAbbreviation: unitAbbreviation ?? null,
+            note: item.note ?? null,
+            optional: !!item.optional,
+          });
+        }
+
+        recipe.ingredients = newIngredients;
+      }
+
+      // Save and return populated document
       await recipe.save();
-      res.status(200).json({ message: 'Recipe updated', recipe });
+      const populated = await Recipe.findById(recipe._id).populate('creatorId', 'userName email avatar').lean();
+      return res.status(200).json({ message: 'Recipe updated', recipe: populated });
     } catch (err) {
       console.error('Update recipe error:', err);
-      res.status(500).json({ message: 'Internal server error' });
+      return res.status(500).json({ message: 'Internal server error' });
     }
   },
 

@@ -103,18 +103,58 @@ router.post('/', authMiddleware.verifyToken, recipeController.create);
  * @swagger
  * /api/recipes/my-recipes:
  *   get:
- *     summary: Get recipes created by current user
+ *     summary: Get recipes created by current user (paginated)
+ *     description: >
+ *       Return recipes created by the authenticated user. Supports pagination and optional text search
+ *       against title/description. Useful for user's personal recipe notebook.
  *     tags: [Recipes]
- *     security: [{ bearerAuth: [] }]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
- *         schema: { type: integer, default: 1 }
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number (1-based)
  *       - in: query
  *         name: limit
- *         schema: { type: integer, default: 20 }
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Items per page (max 100)
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Optional text search term (title/description)
  *     responses:
- *       200: { description: OK }
+ *       '200':
+ *         description: List of user's recipes with pagination
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 recipes:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Recipe'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *       '401':
+ *         description: Unauthorized
+ *       '500':
+ *         description: Internal server error
  */
 router.get('/my-recipes', authMiddleware.verifyToken, recipeController.getMyRecipes);
 
@@ -123,14 +163,44 @@ router.get('/my-recipes', authMiddleware.verifyToken, recipeController.getMyReci
  * /api/recipes/{recipeId}:
  *   get:
  *     summary: Get recipe details by id
+ *     description: >
+ *       Retrieve full recipe details including ingredients (with snapshots), directions,
+ *       creator (populated), timings and tag. Public endpoint — no auth required.
  *     tags: [Recipes]
  *     parameters:
  *       - in: path
  *         name: recipeId
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
+ *         description: Recipe ObjectId
  *     responses:
- *       200: { description: OK }
+ *       '200':
+ *         description: Recipe details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Recipe'
+ *       '400':
+ *         description: Invalid recipe ID
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *       '404':
+ *         description: Recipe not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *       '500':
+ *         description: Internal server error
  */
 router.get('/:recipeId', recipeController.getById);
 
@@ -139,14 +209,93 @@ router.get('/:recipeId', recipeController.getById);
  * /api/recipes/{recipeId}:
  *   put:
  *     summary: Update recipe (owner or admin)
+ *     description: >
+ *       Update a recipe. Only the creator or an admin can update.
+ *       To update ingredients, provide full ingredients array (replace). Each ingredient item may include
+ *       either ingredientId (preferred) or name; and either unitId (preferred) or unit (string).
+ *       Server will resolve IDs and store both reference IDs and snapshots (name/unitAbbreviation).
  *     tags: [Recipes]
- *     security: [{ bearerAuth: [] }]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: recipeId
  *         required: true
+ *         schema:
+ *           type: string
+ *         description: Recipe ObjectId
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               imageUrl:
+ *                 type: string
+ *                 format: uri
+ *               prepTime:
+ *                 type: integer
+ *               cookTime:
+ *                 type: integer
+ *               servings:
+ *                 type: integer
+ *               directions:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               tag:
+ *                 type: string
+ *               ingredients:
+ *                 type: array
+ *                 description: Replace full ingredients list when provided.
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     ingredientId:
+ *                       type: string
+ *                       description: ObjectId referencing Ingredient (server will fetch canonical name)
+ *                     name:
+ *                       type: string
+ *                       description: Fallback name if ingredientId not provided
+ *                     quantity:
+ *                       type: number
+ *                     unitId:
+ *                       type: string
+ *                       description: ObjectId referencing Unit (server will fetch name/abbreviation)
+ *                     unit:
+ *                       type: string
+ *                       description: Human-readable unit if unitId not provided
+ *                     note:
+ *                       type: string
+ *                     optional:
+ *                       type: boolean
  *     responses:
- *       200: { description: Updated }
+ *       '200':
+ *         description: Recipe updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 recipe:
+ *                   $ref: '#/components/schemas/Recipe'
+ *       '400':
+ *         description: Validation error (invalid IDs or payload)
+ *       '401':
+ *         description: Unauthorized
+ *       '403':
+ *         description: Forbidden (not owner or admin)
+ *       '404':
+ *         description: Recipe not found
+ *       '500':
+ *         description: Internal server error
  */
 router.put('/:recipeId', authMiddleware.verifyToken, recipeController.update);
 
@@ -155,14 +304,40 @@ router.put('/:recipeId', authMiddleware.verifyToken, recipeController.update);
  * /api/recipes/{recipeId}:
  *   delete:
  *     summary: Delete recipe (owner or admin)
+ *     description: >
+ *       Permanently delete a recipe. Only the creator of the recipe or a user with admin role can delete.
+ *       Controller will validate recipeId and ownership/role.
  *     tags: [Recipes]
- *     security: [{ bearerAuth: [] }]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: recipeId
  *         required: true
+ *         schema:
+ *           type: string
+ *         description: Recipe ObjectId to delete
  *     responses:
- *       200: { description: Deleted }
+ *       '200':
+ *         description: Recipe deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Recipe deleted"
+ *       '400':
+ *         description: Invalid recipeId
+ *       '401':
+ *         description: Unauthorized
+ *       '403':
+ *         description: Forbidden (not owner or admin)
+ *       '404':
+ *         description: Recipe not found
+ *       '500':
+ *         description: Internal server error
  */
 router.delete('/:recipeId', authMiddleware.verifyToken, recipeController.delete);
 
