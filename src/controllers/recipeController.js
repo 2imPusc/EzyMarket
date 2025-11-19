@@ -1,6 +1,8 @@
 import Recipe from '../model/recipeRepository.js';
 import { findRecipesByKeywords, suggestRecipes, buildShoppingListFromRecipe, suggestIngredientNames } from '../services/recipeService.js';
 import mongoose from 'mongoose';
+import Ingredient from '../model/ingredientRepository.js';
+import Unit from '../model/unitRepository.js';
 
 const recipeController = {
   // POST /api/recipes
@@ -12,14 +14,40 @@ const recipeController = {
         return res.status(400).json({ message: 'Title and ingredients are required' });
       }
       // normalize ingredient names
-      const normalizedIngredients = ingredients.map((i) => ({
-        ingredientId: i.ingredientId && mongoose.Types.ObjectId.isValid(i.ingredientId) ? i.ingredientId : undefined,
-        name: (i.name || '').toLowerCase().trim(),
-        quantity: i.quantity ?? null,
-        unit: i.unit ?? null,
-        note: i.note ?? null,
-        optional: !!i.optional,
-      }));
+      const normalizedIngredients = [];
+      for (const i of ingredients) {
+        let ingredientId = i.ingredientId && mongoose.Types.ObjectId.isValid(i.ingredientId) ? i.ingredientId : undefined;
+        let unitId = i.unitId && mongoose.Types.ObjectId.isValid(i.unitId) ? i.unitId : undefined;
+
+        // resolve ingredient name
+        let name = i.name ? String(i.name).trim().toLowerCase() : '';
+        if (ingredientId) {
+          const ing = await Ingredient.findById(ingredientId).select('name');
+          if (!ing) return res.status(400).json({ message: `ingredientId ${ingredientId} not found` });
+          name = String(ing.name).toLowerCase().trim();
+        }
+        if (!name) return res.status(400).json({ message: 'Each ingredient needs ingredientId or name' });
+
+        // resolve unit
+        let unit = i.unit ? String(i.unit).trim() : null;
+        let unitAbbrev = null;
+        if (unitId) {
+          const u = await Unit.findById(unitId).select('name abbreviation');
+          if (!u) return res.status(400).json({ message: `unitId ${unitId} not found` });
+          unit = u.name;
+          unitAbbrev = u.abbreviation ?? null;
+        }
+
+        normalizedIngredients.push({
+          ingredientId,
+          name,
+          quantity: i.quantity ?? null,
+          unit,
+          unitId,
+          unitAbbreviation: unitAbbrev,
+          optional: !!i.optional,
+        });
+      }
       const newRecipe = new Recipe({
         creatorId,
         title: title.trim(),

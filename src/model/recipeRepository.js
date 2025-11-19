@@ -2,9 +2,11 @@ import mongoose from 'mongoose';
 
 const recipeIngredientSchema = new mongoose.Schema({
   ingredientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Ingredient', required: false },
-  name: { type: String, required: true }, // stored normalized name
+  name: { type: String, required: true }, // snapshot canonical name
   quantity: { type: Number, required: false },
-  unit: { type: String, required: false },
+  unit: { type: String, required: false }, // human readable
+  unitId: { type: mongoose.Schema.Types.ObjectId, ref: 'Unit', required: false }, // optional ref
+  unitAbbreviation: { type: String, required: false }, // snapshot
   note: { type: String, required: false },
   optional: { type: Boolean, default: false },
 });

@@ -16,6 +16,10 @@ const router = express.Router();
  * /api/recipes:
  *   post:
  *     summary: Create a new recipe (authenticated)
+ *     description: >
+ *       Create recipe. For each ingredient you can provide either ingredientId (preferred) or name.
+ *       You can also provide unitId (preferred) or unit (string). Server will resolve IDs to canonical
+ *       records and store both the reference ID and a snapshot (name/unitAbbreviation) for stability.
  *     tags: [Recipes]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -23,31 +27,75 @@ const router = express.Router();
  *       content:
  *         application/json:
  *           schema:
- *             type: object 
+ *             type: object
  *             required: [title, ingredients]
  *             properties:
- *               title: { type: string }
- *               description: { type: string }
- *               imageUrl: { type: string, format: uri }
- *               prepTime: { type: integer }
- *               cookTime: { type: integer }
- *               servings: { type: integer }
+ *               title:
+ *                 type: string
+ *                 example: "Trứng bò rau"
+ *               description:
+ *                 type: string
+ *               imageUrl:
+ *                 type: string
+ *                 format: uri
+ *               prepTime:
+ *                 type: integer
+ *                 example: 10
+ *               cookTime:
+ *                 type: integer
+ *                 example: 30
+ *               servings:
+ *                 type: integer
+ *                 example: 2
  *               directions:
  *                 type: array
- *                 items: { type: string }
+ *                 items:
+ *                   type: string
  *               ingredients:
  *                 type: array
+ *                 description: >
+ *                   Array of ingredient objects. Each item must include either ingredientId (ObjectId) or name.
+ *                   Optionally include unitId (ObjectId) or unit (string), quantity and optional flag.
  *                 items:
  *                   type: object
  *                   properties:
- *                     ingredientId: { type: string }
- *                     name: { type: string }
- *                     quantity: { type: number }
- *                     unit: { type: string }
- *                     optional: { type: boolean }
- *               tag: { type: string }
+ *                     ingredientId:
+ *                       type: string
+ *                       description: ObjectId referencing Ingredient (server will fetch canonical name)
+ *                     name:
+ *                       type: string
+ *                       description: Fallback display name if ingredientId not provided (server will normalize)
+ *                     quantity:
+ *                       type: number
+ *                     unitId:
+ *                       type: string
+ *                       description: ObjectId referencing Unit (server will fetch name/abbreviation)
+ *                     unit:
+ *                       type: string
+ *                       description: Human-readable unit; allowed if unitId is not provided
+ *                     optional:
+ *                       type: boolean
+ *               tag:
+ *                 type: string
+ *                 example: "main"
  *     responses:
- *       201: { description: Created }
+ *       '201':
+ *         description: Created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 recipe:
+ *                   $ref: '#/components/schemas/Recipe'
+ *       '400':
+ *         description: Validation error (missing title/ingredients or invalid IDs)
+ *       '401':
+ *         description: Unauthorized
+ *       '500':
+ *         description: Internal server error
  */
 router.post('/', authMiddleware.verifyToken, recipeController.create);
 
