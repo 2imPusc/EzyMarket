@@ -7,6 +7,7 @@ import authRoutes from './routes/authRoute.js';
 import groupRoutes from './routes/groupRoute.js';
 import ingredientRoutes from './routes/ingredientRoute.js';
 import unitRoutes from './routes/unitRoute.js';
+import recipeRoutes from './routes/recipeRoute.js';
 import { swaggerUi, swaggerSpec } from './config/swagger.js';
 import uploadRouter from './routes/upload.routes.js';
 
@@ -23,6 +24,7 @@ app.use('/api/user', authRoutes);
 app.use('/api/group', groupRoutes);
 app.use('/api/ingredients', ingredientRoutes);
 app.use('/api/units', unitRoutes);
+app.use('/api/recipes', recipeRoutes);
 app.use('/api/uploadthing', uploadRouter);
 
 const PORT = process.env.PORT || 5000;
