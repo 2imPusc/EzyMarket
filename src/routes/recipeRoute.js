@@ -104,9 +104,7 @@ router.post('/', authMiddleware.verifyToken, recipeController.create);
  * /api/recipes/my-recipes:
  *   get:
  *     summary: Get recipes created by current user (paginated)
- *     description: >
- *       Return recipes created by the authenticated user. Supports pagination and optional text search
- *       against title/description. Useful for user's personal recipe notebook.
+ *     description: Returns recipes created by the authenticated user with full recipe objects and pagination meta.
  *     tags: [Recipes]
  *     security:
  *       - bearerAuth: []
@@ -122,7 +120,7 @@ router.post('/', authMiddleware.verifyToken, recipeController.create);
  *         schema:
  *           type: integer
  *           default: 20
- *         description: Items per page (max 100)
+ *         description: Items per page
  *       - in: query
  *         name: q
  *         schema:
@@ -139,18 +137,100 @@ router.post('/', authMiddleware.verifyToken, recipeController.create);
  *                 recipes:
  *                   type: array
  *                   items:
- *                     $ref: '#/components/schemas/Recipe'
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                         example: "691da2b904271b878bbff923"
+ *                       creatorId:
+ *                         type: string
+ *                         example: "68ffa15e02a11df1187f9458"
+ *                       title:
+ *                         type: string
+ *                         example: "Trứng bò rau updated"
+ *                       description:
+ *                         type: string
+ *                         example: "Mỳ tôm omachi"
+ *                       imageUrl:
+ *                         type: string
+ *                         format: uri
+ *                         example: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSSErs2ZhQy37nv863VSqyHjVuITKbHPkLqAA&s"
+ *                       prepTime:
+ *                         type: integer
+ *                         example: 10
+ *                       cookTime:
+ *                         type: integer
+ *                         example: 30
+ *                       servings:
+ *                         type: integer
+ *                         example: 1
+ *                       directions:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                         example: ["trần bò","trần rau","pha mỳ"]
+ *                       ingredients:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             ingredientId:
+ *                               type: string
+ *                               example: "691d7954efc5f01225583f1a"
+ *                             name:
+ *                               type: string
+ *                               example: "beef"
+ *                             quantity:
+ *                               type: number
+ *                               example: 100
+ *                             unit:
+ *                               type: string
+ *                               example: "gram"
+ *                             unitId:
+ *                               type: string
+ *                               example: "691d7c774080e5a2cee6aa34"
+ *                             unitAbbreviation:
+ *                               type: string
+ *                               example: "g"
+ *                             note:
+ *                               type: string
+ *                               nullable: true
+ *                               example: null
+ *                             optional:
+ *                               type: boolean
+ *                               example: true
+ *                             _id:
+ *                               type: string
+ *                               example: "691da2f804271b878bbff938"
+ *                       tag:
+ *                         type: string
+ *                         example: "mytom"
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: "2025-11-19T10:58:01.189Z"
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: "2025-11-19T10:59:04.334Z"
+ *                       __v:
+ *                         type: integer
+ *                         example: 1
  *                 pagination:
  *                   type: object
  *                   properties:
  *                     total:
  *                       type: integer
+ *                       example: 2
  *                     page:
  *                       type: integer
+ *                       example: 1
  *                     limit:
  *                       type: integer
+ *                       example: 20
  *                     totalPages:
  *                       type: integer
+ *                       example: 1
  *       '401':
  *         description: Unauthorized
  *       '500':
@@ -163,9 +243,7 @@ router.get('/my-recipes', authMiddleware.verifyToken, recipeController.getMyReci
  * /api/recipes/{recipeId}:
  *   get:
  *     summary: Get recipe details by id
- *     description: >
- *       Retrieve full recipe details including ingredients (with snapshots), directions,
- *       creator (populated), timings and tag. Public endpoint — no auth required.
+ *     description: Retrieve full recipe details including populated creator object, ingredients snapshot, directions, timings and tag.
  *     tags: [Recipes]
  *     parameters:
  *       - in: path
@@ -180,25 +258,96 @@ router.get('/my-recipes', authMiddleware.verifyToken, recipeController.getMyReci
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Recipe'
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                   example: "691da2b904271b878bbff923"
+ *                 creatorId:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                       example: "68ffa15e02a11df1187f9458"
+ *                     email:
+ *                       type: string
+ *                       example: "chiendo1042004@gmail.com"
+ *                     avatar:
+ *                       type: string
+ *                       example: "https://www.dgpublishing.com/wp-content/uploads/cache/2018/02/temp-avatar/1922871591.jpg"
+ *                     userName:
+ *                       type: string
+ *                       example: "jien"
+ *                 title:
+ *                   type: string
+ *                   example: "Trứng bò rau updated"
+ *                 description:
+ *                   type: string
+ *                   example: "Mỳ tôm omachi"
+ *                 imageUrl:
+ *                   type: string
+ *                   format: uri
+ *                 prepTime:
+ *                   type: integer
+ *                   example: 10
+ *                 cookTime:
+ *                   type: integer
+ *                   example: 30
+ *                 servings:
+ *                   type: integer
+ *                   example: 1
+ *                 directions:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                 ingredients:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       ingredientId:
+ *                         type: string
+ *                         example: "691d7954efc5f01225583f1a"
+ *                       name:
+ *                         type: string
+ *                         example: "beef"
+ *                       quantity:
+ *                         type: number
+ *                         example: 100
+ *                       unit:
+ *                         type: string
+ *                         example: "gram"
+ *                       unitId:
+ *                         type: string
+ *                         example: "691d7c774080e5a2cee6aa34"
+ *                       unitAbbreviation:
+ *                         type: string
+ *                         example: "g"
+ *                       note:
+ *                         type: string
+ *                         nullable: true
+ *                         example: null
+ *                       optional:
+ *                         type: boolean
+ *                         example: true
+ *                       _id:
+ *                         type: string
+ *                         example: "691da2f804271b878bbff938"
+ *                 tag:
+ *                   type: string
+ *                   example: "mytom"
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *                 updatedAt:
+ *                   type: string
+ *                   format: date-time
+ *                 __v:
+ *                   type: integer
  *       '400':
  *         description: Invalid recipe ID
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
  *       '404':
  *         description: Recipe not found
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
  *       '500':
  *         description: Internal server error
  */
@@ -359,7 +508,25 @@ router.delete('/:recipeId', authMiddleware.verifyToken, recipeController.delete)
  *         name: limit
  *         schema: { type: integer, default: 20 }
  *     responses:
- *       200: { description: OK }
+ *       200:
+ *         description: List of recipes with pagination
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 recipes:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Recipe'
+ *                 total:
+ *                   type: integer
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *       500:
+ *         description: Internal server error
  */
 router.get('/search', recipeController.search);
 
@@ -384,7 +551,30 @@ router.get('/search', recipeController.search);
  *               limit:
  *                 type: integer
  *     responses:
- *       200: { description: OK }
+ *       200:
+ *         description: Suggestions list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 suggestions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       recipe:
+ *                         $ref: '#/components/schemas/Recipe'
+ *                       score:
+ *                         type: number
+ *                       matchCount:
+ *                         type: integer
+ *                       totalReq:
+ *                         type: integer
+ *       400:
+ *         description: Bad request (e.g., availableIngredients must be array)
+ *       500:
+ *         description: Internal server error
  */
 router.post('/suggestions', authMiddleware.verifyToken, recipeController.suggestions);
 
@@ -402,12 +592,45 @@ router.post('/suggestions', authMiddleware.verifyToken, recipeController.suggest
  *             type: object
  *             required: [recipeId]
  *             properties:
- *               recipeId: { type: string }
+ *               recipeId:
+ *                 type: string
  *               availableIngredients:
  *                 type: array
  *                 items: { type: string }
  *     responses:
- *       200: { description: OK }
+ *       200:
+ *         description: Shopping list result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 recipeId:
+ *                   type: string
+ *                 title:
+ *                   type: string
+ *                 missing:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name:
+ *                         type: string
+ *                       quantity:
+ *                         type: number
+ *                         nullable: true
+ *                       unit:
+ *                         type: string
+ *                         nullable: true
+ *                       note:
+ *                         type: string
+ *                         nullable: true
+ *                       optional:
+ *                         type: boolean
+ *       400:
+ *         description: Bad request (missing recipeId)
+ *       500:
+ *         description: Internal server error
  */
 router.post('/shopping-list/from-recipe', authMiddleware.verifyToken, recipeController.shoppingListFromRecipe);
 
@@ -426,7 +649,19 @@ router.post('/shopping-list/from-recipe', authMiddleware.verifyToken, recipeCont
  *         name: limit
  *         schema: { type: integer, default: 10 }
  *     responses:
- *       200: { description: OK }
+ *       200:
+ *         description: Array of suggestion names
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 suggestions:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *       500:
+ *         description: Internal server error
  */
 router.get('/master-data/ingredients', recipeController.masterDataIngredients);
 
