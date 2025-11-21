@@ -1,18 +1,18 @@
 import express from 'express';
+import fridgeController from '../controllers/fridgeController.js';
 import fridgeItemController from '../controllers/fridgeItemController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
+import ownershipMiddleware from '../middlewares/ownershipMiddleware.js';
 
 const router = express.Router();
 
-// ===============================================
-//           SWAGGER DEFINITIONS
-// ===============================================
+router.use(authMiddleware.verifyToken);
 
 /**
  * @swagger
  * tags:
- *   name: Fridge Items
- *   description: API for managing items in a user's fridge
+ *   - name: Fridges & Fridge Items
+ *     description: API for managing the fridges themselves and managing items inside a fridge
  */
 
 /**
@@ -123,25 +123,116 @@ const router = express.Router();
  *           example: "Item not found"
  */
 
-// ===============================================
-//               ROUTES DEFINITIONS
-// ===============================================
+/**
+ * @swagger
+ * /api/fridges:
+ *   post:
+ *     summary: Create a new fridge
+ *     tags: [Fridges & Fridge Items]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: "Tủ lạnh chính"
+ *     responses:
+ *       201:
+ *         description: Fridge created
+ */
+router.post('/', fridgeController.create);
 
-router.use(authMiddleware.verifyToken);
+/**
+ * @swagger
+ * /api/fridges:
+ *   get:
+ *     summary: Get all fridges for the logged-in user
+ *     tags: [Fridges & Fridge Items]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of user's fridges
+ */
+router.get('/', fridgeController.getAll);
 
-// Middleware (ví dụ) để kiểm tra quyền sở hữu tủ lạnh
-const verifyFridgeOwnership = (req, res, next) => {
-    // Logic kiểm tra xem req.user.id có quyền truy cập vào req.params.fridgeId không
-    console.log(`User ${req.user.id} is accessing fridge ${req.params.fridgeId}`);
-    next(); // Tạm thời cho qua
-};
+/**
+ * @swagger
+ * /api/fridges/{fridgeId}:
+ *   patch:
+ *     summary: Update a fridge's name
+ *     tags: [Fridges & Fridge Items]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: fridgeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: "Tủ lạnh mới"
+ *     responses:
+ *       200:
+ *         description: Fridge updated
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Fridge not found
+ */
+router.patch(
+  '/:fridgeId',
+  ownershipMiddleware.verifyFridgeOwnership, // Kiểm tra quyền sở hữu trước
+  fridgeController.update
+);
+
+/**
+ * @swagger
+ * /api/fridges/{fridgeId}:
+ *   delete:
+ *     summary: Delete a fridge and all its items
+ *     tags: [Fridges & Fridge Items]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: fridgeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Fridge deleted
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Fridge not found
+ */
+router.delete(
+  '/:fridgeId',
+  ownershipMiddleware.verifyFridgeOwnership, // Kiểm tra quyền sở hữu trước
+  fridgeController.remove
+);
 
 /**
  * @swagger
  * /api/fridges/{fridgeId}/items:
  *   post:
  *     summary: Add a new item to a fridge
- *     tags: [Fridge Items]
+ *     tags: [Fridges & Fridge Items]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -182,14 +273,14 @@ const verifyFridgeOwnership = (req, res, next) => {
  *       '403':
  *         description: Forbidden - User does not have permission to access this fridge
  */
-router.post('/:fridgeId/items', verifyFridgeOwnership, fridgeItemController.add);
+router.post('/:fridgeId/items', ownershipMiddleware.verifyFridgeOwnership, fridgeItemController.add);
 
 /**
  * @swagger
  * /api/fridges/{fridgeId}/items:
  *   get:
  *     summary: Get all items from a fridge
- *     tags: [Fridge Items]
+ *     tags: [Fridges & Fridge Items]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -251,14 +342,14 @@ router.post('/:fridgeId/items', verifyFridgeOwnership, fridgeItemController.add)
  *       '403':
  *         description: Forbidden
  */
-router.get('/:fridgeId/items', verifyFridgeOwnership, fridgeItemController.getAll);
+router.get('/:fridgeId/items', ownershipMiddleware.verifyFridgeOwnership, fridgeItemController.getAll);
 
 /**
  * @swagger
  * /api/fridges/items/{itemId}:
  *   patch:
  *     summary: Update a fridge item
- *     tags: [Fridge Items]
+ *     tags: [Fridges & Fridge Items]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -296,14 +387,18 @@ router.get('/:fridgeId/items', verifyFridgeOwnership, fridgeItemController.getAl
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.patch('/items/:itemId', fridgeItemController.update);
+router.patch(
+  '/items/:itemId',
+  ownershipMiddleware.verifyItemOwnership, 
+  fridgeItemController.update
+);
 
 /**
  * @swagger
  * /api/fridges/items/{itemId}:
  *   delete:
  *     summary: Delete a fridge item
- *     tags: [Fridge Items]
+ *     tags: [Fridges & Fridge Items]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -333,6 +428,10 @@ router.patch('/items/:itemId', fridgeItemController.update);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.delete('/items/:itemId', fridgeItemController.remove);
+router.delete(
+  '/items/:itemId',
+  ownershipMiddleware.verifyItemOwnership,
+  fridgeItemController.remove
+);
 
 export default router;
