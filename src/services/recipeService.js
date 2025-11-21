@@ -1,71 +1,221 @@
 import Recipe from '../model/recipeRepository.js';
 import Ingredient from '../model/ingredientRepository.js';
+import Unit from '../model/unitRepository.js';
 import mongoose from 'mongoose';
 
-export const findRecipesByKeywords = async (q, page = 1, limit = 20) => {
-  const skip = (Math.max(parseInt(page, 10), 1) - 1) * parseInt(limit, 10);
-  const filter = q ? { $text: { $search: q } } : {};
+const resolveIngredients = async (ingredientsInput) => {
+  if (!Array.isArray(ingredientsInput)) return [];
+
+  return Promise.all(ingredientsInput.map(async (item) => {
+    let name = item.name;
+    let unitAbbreviation = item.unitAbbreviation || item.unit;
+
+    // 1. Resolve Ingredient Name by ID
+    if (item.ingredientId && mongoose.Types.ObjectId.isValid(item.ingredientId)) {
+      const ingDoc = await Ingredient.findById(item.ingredientId).select('name').lean();
+      if (ingDoc) name = ingDoc.name;
+    }
+
+    // 2. Resolve Unit Abbreviation by ID
+    if (item.unitId && mongoose.Types.ObjectId.isValid(item.unitId)) {
+      const unitDoc = await Unit.findById(item.unitId).select('abbreviation name').lean();
+      if (unitDoc) unitAbbreviation = unitDoc.abbreviation || unitDoc.name;
+    }
+
+    return {
+      ingredientId: item.ingredientId || null,
+      name: name || 'Unknown Ingredient', // Fallback
+      quantity: item.quantity || 0,
+      unit: item.unit || null, // Input raw unit
+      unitId: item.unitId || null,
+      unitAbbreviation: unitAbbreviation || null, // Snapshot
+      note: item.note || '',
+      optional: !!item.optional,
+    };
+  }));
+};
+
+export const createRecipe = async (userId, data) => {
+  const resolvedIngredients = await resolveIngredients(data.ingredients);
+  
+  const newRecipe = new Recipe({
+    ...data,
+    creatorId: userId,
+    ingredients: resolvedIngredients
+  });
+  
+  return await newRecipe.save();
+};
+
+export const updateRecipe = async (recipeId, userId, data, isAdmin = false) => {
+  const recipe = await Recipe.findById(recipeId);
+  if (!recipe) throw new Error('Recipe not found');
+  
+  // Check ownership
+  if (recipe.creatorId.toString() !== userId.toString() && !isAdmin) {
+    throw new Error('Permission denied');
+  }
+
+  // Nếu có update ingredients, cần resolve lại
+  if (data.ingredients) {
+    data.ingredients = await resolveIngredients(data.ingredients);
+  }
+
+  Object.assign(recipe, data);
+  return await recipe.save();
+};
+
+export const deleteRecipe = async (recipeId, userId, isAdmin = false) => {
+  // Validate đầu vào
+  if (!userId) throw new Error('User ID is required for deletion check'); // Thêm dòng này
+
+  const recipe = await Recipe.findById(recipeId);
+  if (!recipe) throw new Error('Recipe not found');
+
+  // So sánh an toàn hơn
+  // Ép kiểu String để so sánh, tránh lỗi toString()
+  const creatorIdStr = String(recipe.creatorId);
+  const userIdStr = String(userId);
+
+  if (creatorIdStr !== userIdStr && !isAdmin) {
+    throw new Error('Permission denied');
+  }
+  
+  return await Recipe.deleteOne({ _id: recipeId });
+};
+
+export const getRecipeById = async (recipeId) => {
+  if (!mongoose.Types.ObjectId.isValid(recipeId)) throw new Error('Invalid ID');
+  const recipe = await Recipe.findById(recipeId)
+    .populate('creatorId', 'userName email avatar') // Populate user info
+    .lean();
+  return recipe;
+};
+
+export const searchRecipes = async ({ q, tag, page = 1, limit = 20 }) => {
+  const skip = (Math.max(parseInt(page), 1) - 1) * parseInt(limit);
+  const lim = parseInt(limit);
+  
+  const filter = {};
+  if (tag) filter.tag = tag;
+  if (q) filter.$text = { $search: q };
+
+  // Sorting: Nếu search text thì sort theo độ khớp (score), nếu không thì sort mới nhất
+  const sort = q ? { score: { $meta: 'textScore' } } : { createdAt: -1 };
+  const projection = q ? { score: { $meta: 'textScore' } } : {};
+
   const [recipes, total] = await Promise.all([
-    Recipe.find(filter).select('-__v').sort(q ? { score: { $meta: 'textScore' } } : { createdAt: -1 }).skip(skip).limit(parseInt(limit, 10)),
+    Recipe.find(filter, projection).select('-__v').sort(sort).skip(skip).limit(lim).lean(),
     Recipe.countDocuments(filter),
   ]);
-  return { recipes, total, page: parseInt(page, 10), limit: parseInt(limit, 10) };
+
+  return { recipes, total, page: parseInt(page), limit: lim, totalPages: Math.ceil(total / lim) };
+};
+
+export const getMyRecipes = async (userId, { q, page = 1, limit = 20 }) => {
+  const skip = (Math.max(parseInt(page), 1) - 1) * parseInt(limit);
+  const filter = { creatorId: userId };
+  if (q) filter.$text = { $search: q };
+
+  const [recipes, total] = await Promise.all([
+    Recipe.find(filter).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+    Recipe.countDocuments(filter),
+  ]);
+
+  return { recipes, total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) };
 };
 
 /**
- * Suggest recipes based on available ingredient names (array of strings)
- * Strategy:
- *  - normalize provided names (lowercase, trim)
- *  - compute matchCount between recipe.ingredients.name and available list
- *  - score = matchCount / totalRequired (exclude optional)
- *  - return recipes with score >= threshold (default 0.6), sorted by score desc
+ * Đã tối ưu: Sử dụng Aggregation Pipeline thay vì xử lý trên RAM (JS)
  */
-export const suggestRecipes = async (availableNames = [], options = {}) => {
-  const threshold = options.threshold ?? 0.6;
-  const limit = options.limit ?? 20;
-  const normalized = new Set(availableNames.map((n) => (n || '').toLowerCase().trim()));
-  const allRecipes = await Recipe.find().lean();
-  const scored = allRecipes
-    .map((r) => {
-      const required = r.ingredients.filter((i) => !i.optional);
-      const totalReq = required.length || r.ingredients.length || 1;
-      const matchCount = required.reduce((acc, ing) => acc + (normalized.has((ing.name || '').toLowerCase().trim()) ? 1 : 0), 0);
-      const score = matchCount / totalReq;
-      return { recipe: r, score, matchCount, totalReq };
-    })
-    .filter((s) => s.score >= threshold)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((s) => ({ recipe: s.recipe, score: s.score, matchCount: s.matchCount, totalReq: s.totalReq }));
-  return scored;
+export const suggestRecipes = async (availableNames = [], { threshold = 0.6, limit = 20 }) => {
+  const normalizedNames = availableNames.map(n => (n || '').toLowerCase().trim()).filter(Boolean);
+  if (normalizedNames.length === 0) return [];
+
+  const pipeline = [
+    // 1. Pre-filter: Chỉ lấy các recipe có chứa ít nhất 1 nguyên liệu trong list
+    { 
+      $match: { 
+        'ingredients.name': { $in: normalizedNames.map(n => new RegExp(`^${n}$`, 'i')) } 
+      } 
+    },
+    // 2. Add fields để tính toán
+    {
+      $addFields: {
+        // Lọc ra danh sách nguyên liệu BẮT BUỘC (không phải optional)
+        requiredIngredients: {
+          $filter: {
+            input: "$ingredients",
+            as: "ing",
+            cond: { $eq: ["$$ing.optional", false] }
+          }
+        }
+      }
+    },
+    {
+      $addFields: {
+        // Đếm số lượng nguyên liệu bắt buộc khớp với input
+        matchedCount: {
+          $size: {
+            $filter: {
+              input: "$requiredIngredients",
+              as: "req",
+              cond: { $in: [ { $toLower: "$$req.name" }, normalizedNames ] }
+            }
+          }
+        },
+        totalRequired: { $size: "$requiredIngredients" }
+      }
+    },
+    // 3. Tính điểm số
+    {
+      $addFields: {
+        score: {
+          $cond: [
+            { $eq: ["$totalRequired", 0] }, 
+            0, 
+            { $divide: ["$matchedCount", "$totalRequired"] }
+          ]
+        }
+      }
+    },
+    // 4. Filter theo threshold và Sort
+    { $match: { score: { $gte: threshold } } },
+    { $sort: { score: -1 } },
+    { $limit: parseInt(limit) },
+    // 5. Project output gọn gàng
+    {
+      $project: {
+        _id: 1, title: 1, description: 1, imageUrl: 1, 
+        score: 1, matchedCount: 1, totalRequired: 1, ingredients: 1
+      }
+    }
+  ];
+
+  return await Recipe.aggregate(pipeline);
 };
 
-/**
- * Create shopping list from a recipe and available ingredients list.
- * Input: recipeId, availableNames (array of strings)
- * Output: missingIngredients array (objects from recipe.ingredients that are not satisfied)
- */
-export const buildShoppingListFromRecipe = async (recipeId, availableNames = []) => {
-  if (!mongoose.Types.ObjectId.isValid(recipeId)) throw new Error('Invalid recipeId');
+export const buildShoppingList = async (recipeId, availableNames = []) => {
   const recipe = await Recipe.findById(recipeId).lean();
   if (!recipe) throw new Error('Recipe not found');
-  const have = new Set(availableNames.map((n) => (n || '').toLowerCase().trim()));
+
+  const haveSet = new Set(availableNames.map((n) => (n || '').toLowerCase().trim()));
+  
   const missing = recipe.ingredients
-    .filter((ing) => !have.has((ing.name || '').toLowerCase().trim()))
+    .filter((ing) => !haveSet.has((ing.name || '').toLowerCase().trim()))
     .map((ing) => ({
       name: ing.name,
-      quantity: ing.quantity ?? null,
-      unit: ing.unit ?? null,
-      note: ing.note ?? null,
-      optional: ing.optional ?? false,
+      quantity: ing.quantity,
+      unit: ing.unitAbbreviation || ing.unit,
+      note: ing.note,
+      optional: ing.optional,
     }));
+
   return { recipeId: recipe._id, title: recipe.title, missing };
 };
 
-/** master-data ingredients: autocomplete by prefix */
 export const suggestIngredientNames = async (prefix = '', limit = 10) => {
-  if (!prefix) return Ingredient.find().select('name -_id').limit(limit).lean();
+  if (!prefix) return await Ingredient.find().select('name').limit(limit).lean();
   const regex = new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-  const docs = await Ingredient.find({ name: regex }).select('name -_id').limit(limit).lean();
-  return docs.map((d) => d.name);
+  return await Ingredient.find({ name: regex }).select('name').limit(limit).lean();
 };
