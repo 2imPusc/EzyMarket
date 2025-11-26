@@ -18,6 +18,12 @@ export const DEFAULT_EXPIRE_DAYS = {
 };
 
 const ingredientSchema = new mongoose.Schema({
+  creatorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
   name: {
     type: String,
     required: true,
@@ -71,7 +77,7 @@ const ingredientSchema = new mongoose.Schema({
 });
 
 // Index để search nhanh hơn
-ingredientSchema.index({ name: 'text', foodCategory: 1 });
+ingredientSchema.index({ name: 1, creatorId: 1 }, { unique: true });
 
 // Middleware: Update updatedAt trước khi save
 ingredientSchema.pre('save', function(next) {

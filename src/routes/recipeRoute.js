@@ -8,7 +8,7 @@ const router = express.Router();
  * @swagger
  * components:
  *   schemas:
- *     IngredientInput:
+ *     IngredientRecipeInput:
  *       type: object
  *       required: [name]
  *       properties:
@@ -87,7 +87,7 @@ const router = express.Router();
  *         ingredients:
  *           type: array
  *           items:
- *             $ref: '#/components/schemas/IngredientInput'
+ *             $ref: '#/components/schemas/IngredientRecipeInput'
  *
  *     RecipeResponse:
  *       type: object
@@ -103,7 +103,7 @@ const router = express.Router();
  *           type: array
  *           items:
  *             allOf:
- *               - $ref: '#/components/schemas/IngredientInput'
+ *               - $ref: '#/components/schemas/IngredientRecipeInput'
  *               - type: object
  *                 properties:
  *                   unitAbbreviation:
