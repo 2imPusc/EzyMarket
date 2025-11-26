@@ -11,8 +11,8 @@ const router = express.Router();
 /**
  * @swagger
  * tags:
- *   name: Tags
- *   description: API for managing system-wide and user-specific recipe tags
+ *   name: Recipes &  Recipe-tags 
+ *   description: API for managing system-wide and user-created recipes and tags
  */
 
 /**
@@ -79,11 +79,14 @@ router.use(authMiddleware.verifyToken);
  * @swagger
  * /api/tags:
  *   post:
- *     summary: Create a new personal tag
- *     tags: [Tags]
+ *     summary: Create a new tag (Personal or System)
+ *     tags: [Recipes &  Recipe-tags]
  *     security:
  *       - bearerAuth: []
- *     description: "Creates a new personal tag under the logged-in user's account. Tag names must be unique for each user."
+ *     description: |
+ *       Creates a new tag.
+ *       - **Regular User**: Creates a **personal tag** (creatorId = userId).
+ *       - **Admin**: Creates a **system tag** (creatorId = null), available to all users globally.
  *     requestBody:
  *       required: true
  *       content:
@@ -92,17 +95,17 @@ router.use(authMiddleware.verifyToken);
  *             $ref: '#/components/schemas/TagInput'
  *     responses:
  *       '201':
- *         description: Personal tag created successfully.
+ *         description: Tag created successfully.
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/TagSuccessResponse'
  *       '400':
- *         description: Bad Request (e.g., name is missing).
+ *         description: Bad Request.
  *       '401':
  *         description: Unauthorized.
  *       '409':
- *         description: Conflict (You already have a tag with this name).
+ *         description: Conflict (Tag name already exists).
  */
 router.post('/', tagController.create);
 
@@ -111,7 +114,7 @@ router.post('/', tagController.create);
  * /api/tags:
  *   get:
  *     summary: Get available tags (System + User's own)
- *     tags: [Tags]
+ *     tags: [Recipes &  Recipe-tags]
  *     security:
  *       - bearerAuth: []
  *     description: "Retrieves a list of all system-wide tags (created by admins) PLUS all personal tags created by the logged-in user."
@@ -135,10 +138,44 @@ router.get('/', tagController.getAll);
 
 /**
  * @swagger
+ * /api/tags/suggest:
+ *   get:
+ *     summary: Suggest tags for autocomplete
+ *     tags: [Recipes &  Recipe-tags]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Returns a list of tags (system tags + user's personal tags) matching the search keyword. Used for autocomplete dropdowns."
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: "Keyword to search tag names (contains match)."
+ *     responses:
+ *       '200':
+ *         description: List of suggested tags.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                     example: "6562f1b4b1a4a9c684f3c8c8"
+ *                   name:
+ *                     type: string
+ *                     example: "món chay"
+ */
+router.get('/suggest', tagController.suggest);
+
+/**
+ * @swagger
  * /api/tags/{identifier}:
  *   get:
  *     summary: Get a single tag by its ID or name
- *     tags: [Tags]
+ *     tags: [Recipes &  Recipe-tags]
  *     security:
  *       - bearerAuth: []
  *     description: |
@@ -180,18 +217,21 @@ router.get('/:identifier', tagController.getById);
  * @swagger
  * /api/tags/{id}:
  *   put:
- *     summary: Update a personal tag (Owner only)
- *     tags: [Tags]
+ *     summary: Update a tag
+ *     tags: [Recipes &  Recipe-tags]
  *     security:
  *       - bearerAuth: []
- *     description: "Updates the name of a personal tag. A user can only update tags they have created. System tags cannot be updated via this API."
+ *     description: |
+ *       Updates an existing tag name.
+ *       - **Regular User**: Can only update their **own personal tags**.
+ *       - **Admin**: Can only update **system tags** (tags with creatorId = null).
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: The ObjectId of the personal tag to update.
+ *         description: The ObjectId of the tag to update.
  *     requestBody:
  *       required: true
  *       content:
@@ -201,50 +241,44 @@ router.get('/:identifier', tagController.getById);
  *     responses:
  *       '200':
  *         description: Tag updated successfully.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/TagSuccessResponse'
- *       '400':
- *         description: Bad Request (e.g., name is missing).
  *       '401':
  *         description: Unauthorized.
  *       '403':
- *         description: Forbidden (Trying to update a system tag or another user's tag).
+ *         description: Forbidden (Permission denied).
  *       '404':
  *         description: Tag not found.
  *       '409':
- *         description: Conflict (You already have a tag with the new name).
+ *         description: Conflict (Tag name already exists).
  */
 router.put('/:id', tagController.update);
+
 
 /**
  * @swagger
  * /api/tags/{id}:
  *   delete:
- *     summary: Delete a personal tag (Owner only)
- *     tags: [Tags]
+ *     summary: Delete a tag
+ *     tags: [Recipes &  Recipe-tags]
  *     security:
  *       - bearerAuth: []
- *     description: "Deletes a personal tag. A user can only delete tags that they have created. System tags cannot be deleted via this API."
+ *     description: |
+ *       Deletes a tag.
+ *       - **Regular User**: Can only delete their **own personal tags**.
+ *       - **Admin**: Can only delete **system tags**.
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: The ObjectId of the personal tag to delete.
+ *         description: The ObjectId of the tag to delete.
  *     responses:
  *       '200':
  *         description: Tag deleted successfully.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/MessageResponse'
  *       '401':
  *         description: Unauthorized.
  *       '403':
- *         description: Forbidden (Trying to delete a system tag or another user's tag).
+ *         description: Forbidden (Permission denied).
  *       '404':
  *         description: Tag not found.
  */

@@ -4,45 +4,76 @@ import Unit from '../model/unitRepository.js';
 import tagService from './tagService.js';
 import mongoose from 'mongoose';
 
-const resolveIngredients = async (ingredientsInput) => {
-  if (!Array.isArray(ingredientsInput)) return [];
-
+/**
+ * Xác thực và giải quyết (validate and resolve) một mảng các nguyên liệu đầu vào.
+ * Hàm này sẽ NÉM LỖI (throw error) nếu bất kỳ ingredientId hoặc unitId nào không hợp lệ.
+ * @param {Array} ingredientsInput - Mảng nguyên liệu từ req.body.
+ * @param {string} userId - ID của người dùng để kiểm tra quyền sở hữu nguyên liệu cá nhân.
+ * @returns {Promise<Array>} - Mảng các nguyên liệu đã được xác thực và làm giàu thông tin.
+ */
+const resolveAndValidateIngredients = async (ingredientsInput = [], userId) => {
+  // Dùng Promise.all để xử lý đồng thời và dừng lại ngay khi có lỗi
   return Promise.all(ingredientsInput.map(async (item) => {
-    let resolvedName = item.name;
-    let resolvedUnitText = item.unitText || item.unit; // Hỗ trợ cả key cũ "unit"
-
-    // Cố gắng tìm tên chuẩn từ ingredientId
-    if (item.ingredientId && mongoose.Types.ObjectId.isValid(item.ingredientId)) {
-      const ingDoc = await Ingredient.findById(item.ingredientId).select('name').lean();
-      if (ingDoc) resolvedName = ingDoc.name;
-    }
-
-    // Nếu người dùng cung cấp unitId, ưu tiên lấy tên/viết tắt từ đó làm unitText
-    if (item.unitId && mongoose.Types.ObjectId.isValid(item.unitId)) {
-      const unitDoc = await Unit.findById(item.unitId).select('name abbreviation').lean();
-      if (unitDoc) resolvedUnitText = unitDoc.abbreviation || unitDoc.name;
-    }
-
-    return {
-      ingredientId: item.ingredientId || null,
-      name: resolvedName || 'Unknown Ingredient',
-      quantity: item.quantity || 0,
-      unitId: item.unitId || null,
-      unitText: resolvedUnitText || '', // Luôn đảm bảo có giá trị
-      note: item.note || '',
-      optional: !!item.optional,
+    const resolvedItem = {
+      name: item.name, // Giữ lại tên người dùng nhập làm snapshot
+      quantity: item.quantity,
+      unitText: item.unitText,
+      note: item.note,
+      optional: item.optional,
+      ingredientRefId: null, // Mặc định là null
+      ingredientRefType: undefined,
+      unitId: null, // Mặc định là null
     };
+
+    // --- BƯỚC VALIDATE INGREDIENT ---
+    if (item.ingredientId) {
+      if (!mongoose.Types.ObjectId.isValid(item.ingredientId)) {
+        throw new Error(`Invalid format for ingredientId: ${item.ingredientId}`);
+      }
+      
+      // Tìm ingredient VÀ đảm bảo nó là của hệ thống hoặc của chính người dùng
+      const ingDoc = await Ingredient.findOne({
+        _id: item.ingredientId,
+        creatorId: { $in: [userId, null] }
+      }).lean();
+
+      if (!ingDoc) {
+        throw new Error(`Ingredient with ID '${item.ingredientId}' not found or you don't have permission to use it.`);
+      }
+      
+      resolvedItem.ingredientRefId = ingDoc._id;
+      resolvedItem.ingredientRefType = 'Ingredient'; // Giờ chúng ta chỉ có 1 loại Ingredient
+      resolvedItem.name = ingDoc.name; // Ghi đè bằng tên chuẩn từ DB
+    }
+
+    // --- BƯỚC VALIDATE UNIT ---
+    if (item.unitId) {
+      if (!mongoose.Types.ObjectId.isValid(item.unitId)) {
+        throw new Error(`Invalid format for unitId: ${item.unitId}`);
+      }
+
+      const unitDoc = await Unit.findById(item.unitId).lean();
+      if (!unitDoc) {
+        throw new Error(`Unit with ID '${item.unitId}' not found.`);
+      }
+
+      resolvedItem.unitId = unitDoc._id;
+      resolvedItem.unitText = unitDoc.abbreviation || unitDoc.name; // Ghi đè bằng đơn vị chuẩn
+    }
+
+    return resolvedItem;
   }));
 };
 
 export const createRecipe = async (userId, data) => {
-  const resolvedIngredients = await resolveIngredients(data.ingredients);
   const tagIds = await tagService.findOrCreateTags(data.tags, userId);
+  const validatedIngredients = await resolveAndValidateIngredients(data.ingredients, userId);
   
+  // BỎ tagsSearch
   const newRecipe = new Recipe({
     ...data,
     creatorId: userId,
-    ingredients: resolvedIngredients,
+    ingredients: validatedIngredients, 
     tags: tagIds
   });
   
@@ -57,13 +88,13 @@ export const updateRecipe = async (recipeId, userId, data, isAdmin = false) => {
     throw new Error('Permission denied');
   }
 
-  // Nếu client gửi lên một mảng tags mới
   if (data.tags) {
     data.tags = await tagService.findOrCreateTags(data.tags, userId);
+    // BỎ logic tagsSearch ở đây
   }
 
   if (data.ingredients) {
-    data.ingredients = await resolveIngredients(data.ingredients);
+    data.ingredients = await resolveAndValidateIngredients(data.ingredients, userId);
   }
 
   Object.assign(recipe, data);
@@ -71,14 +102,10 @@ export const updateRecipe = async (recipeId, userId, data, isAdmin = false) => {
 };
 
 export const deleteRecipe = async (recipeId, userId, isAdmin = false) => {
-  // Validate đầu vào
-  if (!userId) throw new Error('User ID is required for deletion check'); // Thêm dòng này
-
+  if (!userId) throw new Error('User ID is required');
   const recipe = await Recipe.findById(recipeId);
   if (!recipe) throw new Error('Recipe not found');
 
-  // So sánh an toàn hơn
-  // Ép kiểu String để so sánh, tránh lỗi toString()
   const creatorIdStr = String(recipe.creatorId);
   const userIdStr = String(userId);
 
@@ -91,37 +118,41 @@ export const deleteRecipe = async (recipeId, userId, isAdmin = false) => {
 
 export const getRecipeById = async (recipeId) => {
   if (!mongoose.Types.ObjectId.isValid(recipeId)) throw new Error('Invalid ID');
-  const recipe = await Recipe.findById(recipeId)
-    .populate('creatorId', 'userName email avatar') // Populate user info
+  return await Recipe.findById(recipeId)
+    .populate('creatorId', 'userName email avatar')
+    .populate('tags', 'name') // Populate tag để hiện tên
     .lean();
-  return recipe;
 };
 
-export const searchRecipes = async ({ q, tag, page = 1, limit = 20 }) => {
+// --- SEARCH CHUẨN ---
+export const searchRecipes = async ({ q, tagId, page = 1, limit = 20 }) => {
   const skip = (Math.max(parseInt(page), 1) - 1) * parseInt(limit);
   const lim = parseInt(limit);
   const filter = {};
 
-  if (tag) {
-    const tagDoc = await tagService.findByName(tag);
-    if (tagDoc) {
-      filter.tags = tagDoc._id;
-    } else {
-      return { recipes: [], total: 0, page: parseInt(page), limit: lim, totalPages: 0 };
-    }
+  // 1. Filter theo ID Tag (Nhanh, Chính xác)
+  if (tagId) {
+    filter.tags = tagId; 
   }
 
-  // Chỉ cần một điều kiện: nếu có 'q', thì dùng $text search.
+  // 2. Filter theo Text
+  let projection = {};
+  let sort = { createdAt: -1 };
+
   if (q) {
     filter.$text = { $search: q };
+    projection = { score: { $meta: 'textScore' } };
+    sort = { score: { $meta: 'textScore' } };
   }
 
-  // Luôn sắp xếp theo độ liên quan nếu có tìm kiếm, nếu không thì theo ngày tạo.
-  const sort = q ? { score: { $meta: 'textScore' } } : { createdAt: -1 };
-  const projection = q ? { score: { $meta: 'textScore' } } : {};
-  
   const [recipes, total] = await Promise.all([
-    Recipe.find(filter, projection).sort(sort).skip(skip).limit(lim).lean(),
+    Recipe.find(filter, projection)
+      .sort(sort)
+      .skip(skip)
+      .limit(lim)
+      .populate('creatorId', 'userName avatar') 
+      .populate('tags', 'name') 
+      .lean(),
     Recipe.countDocuments(filter),
   ]);
 
@@ -131,35 +162,47 @@ export const searchRecipes = async ({ q, tag, page = 1, limit = 20 }) => {
 export const getMyRecipes = async (userId, { q, page = 1, limit = 20 }) => {
   const skip = (Math.max(parseInt(page), 1) - 1) * parseInt(limit);
   const filter = { creatorId: userId };
-  if (q) filter.$text = { $search: q };
+  
+  // Logic Text Search tương tự
+  let projection = {};
+  let sort = { createdAt: -1 };
+
+  if (q) {
+    filter.$text = { $search: q };
+    projection = { score: { $meta: 'textScore' } };
+    sort = { score: { $meta: 'textScore' } };
+  }
 
   const [recipes, total] = await Promise.all([
-    Recipe.find(filter).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+    Recipe.find(filter, projection).sort(sort).skip(skip).limit(parseInt(limit)).lean(),
     Recipe.countDocuments(filter),
   ]);
 
   return { recipes, total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) };
 };
 
-export const getSystemRecipes = async ({ q, tag, page = 1, limit = 20 }) => {
+export const getSystemRecipes = async ({ q, tagId, page = 1, limit = 20 }) => {
   const skip = (Math.max(parseInt(page), 1) - 1) * parseInt(limit);
   const lim = parseInt(limit);
   
-  const filter = { creatorId: null }; // <-- Mấu chốt là ở đây
-  if (tag) {
-    // Cần tìm tagId trước
-    const tagDoc = await tagService.findByName(tag);
-    if (tagDoc && tagDoc.creatorId === null) { // Đảm bảo đó là tag hệ thống
-        filter.tags = tagDoc._id;
-    } else {
-        // Nếu tag không tồn tại trong hệ thống, trả về rỗng
-        return { recipes: [], total: 0, page: parseInt(page), limit: lim, totalPages: 0 };
-    }
+  const filter = { creatorId: null }; 
+
+  // SỬA: Dùng tagId thay vì tag name
+  if (tagId) {
+      filter.tags = tagId;
   }
-  if (q) filter.$text = { $search: q };
+  
+  let projection = {};
+  let sort = { createdAt: -1 };
+
+  if (q) {
+    filter.$text = { $search: q };
+    projection = { score: { $meta: 'textScore' } };
+    sort = { score: { $meta: 'textScore' } };
+  }
 
   const [recipes, total] = await Promise.all([
-    Recipe.find(filter).sort({ createdAt: -1 }).skip(skip).limit(lim).lean(),
+    Recipe.find(filter, projection).sort(sort).skip(skip).limit(lim).lean(),
     Recipe.countDocuments(filter),
   ]);
 

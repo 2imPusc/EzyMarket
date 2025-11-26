@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import tagService from '../services/tagService.js';
+import Tag from '../model/tagRepository.js';
 
 const getAll = async (req, res) => {
   try {
@@ -15,7 +16,8 @@ const create = async (req, res) => {
     const { name } = req.body;
     if (!name) return res.status(400).json({ message: 'Tag name is required.' });
 
-    const newTag = await tagService.createPersonalTag(name, req.user.id);
+    const isAdmin = req.user.role === 'admin';
+    const newTag = await tagService.createTag(name, req.user.id, isAdmin);
     res.status(201).json({ message: 'Personal tag created successfully.', tag: newTag });
   } catch (error) {
     if (error.code === 11000) {
@@ -53,12 +55,40 @@ const getByIdentifier = async (req, res) => {
   }
 };
 
+const suggest = async (req, res) => {
+  try {
+    const { q } = req.query;
+    const userId = req.user?.id || null; // Lấy ID user nếu đã login
+
+    // Tìm tag hệ thống (null) HOẶC tag của user đó
+    const filter = {
+      creatorId: { $in: [null, userId] }
+    };
+
+    if (q) {
+      // Tìm tên tag chứa từ khóa (regex)
+      filter.name = { $regex: q, $options: 'i' };
+    }
+
+    const tags = await Tag.find(filter)
+      .select('_id name') // Chỉ lấy ID và Name
+      .limit(10)          // Giới hạn kết quả gợi ý
+      .sort({ name: 1 })  // Sắp xếp A-Z
+      .lean();
+
+    res.json(tags);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const update = async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ message: 'Tag name is required.' });
 
-    const updatedTag = await tagService.updatePersonalTag(req.params.id, req.user.id, { name });
+    const isAdmin = req.user.role === 'admin';
+    const updatedTag = await tagService.updateTag(req.params.id, req.user.id, { name }, isAdmin);
     res.status(200).json({ message: 'Tag updated successfully.', tag: updatedTag });
   } catch (error) {
     let status = 404;
@@ -69,7 +99,8 @@ const update = async (req, res) => {
 
 const remove = async (req, res) => {
   try {
-    await tagService.deletePersonalTag(req.params.id, req.user.id);
+    const isAdmin = req.user.role === 'admin';
+    await tagService.deleteTag(req.params.id, req.user.id, isAdmin);
     res.status(200).json({ message: 'Tag deleted successfully.' });
   } catch (error) {
     res.status(404).json({ message: error.message });
@@ -80,6 +111,7 @@ export default {
   getAll, 
   create,
   getById: getByIdentifier,
+  suggest,
   update, 
   delete: remove 
 };

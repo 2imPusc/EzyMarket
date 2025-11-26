@@ -13,8 +13,8 @@ router.use(authMiddleware.verifyToken);
 /**
  * @swagger
  * tags:
- *   name: Recipes
- *   description: API for managing system-wide and user-created recipes
+ *   name: Recipes &  Recipe-tags 
+ *   description: API for managing system-wide and user-created recipes and tags
  */
 
 /**
@@ -28,8 +28,8 @@ router.use(authMiddleware.verifyToken);
  *       properties:
  *         ingredientId:
  *           type: string
- *           description: MongoDB ObjectId của nguyên liệu gốc (nếu có). Server sẽ ưu tiên lấy tên chuẩn từ ID này.
- *           example: "60d5ecb8b5c9e67890123456"
+ *           description: "ObjectId of an existing system or personal ingredient. MUST BE a valid and accessible ID if provided."
+ *           example: "60c72b2f9b1d8c001f8e4c6a"
  *         name:
  *           type: string
  *           description: Tên hiển thị của nguyên liệu (được dùng nếu không có ingredientId hoặc để snapshot).
@@ -40,7 +40,7 @@ router.use(authMiddleware.verifyToken);
  *           example: 200
  *         unitId:
  *           type: string
- *           description: MongoDB ObjectId của đơn vị tính (nếu có).
+ *           description: "ObjectId of an existing unit. MUST BE a valid ID if provided."
  *           example: "60d5ecb8b5c9e67890123457"
  *         unit:
  *           type: string
@@ -185,10 +185,13 @@ router.use(authMiddleware.verifyToken);
  * @swagger
  * /api/recipes:
  *   post:
- *     summary: Create a new personal recipe
- *     tags: [Recipes]
+ *     summary: Create a new recipe (Personal or System)
+ *     tags: [Recipes &  Recipe-tags]
  *     security: [{ bearerAuth: [] }]
- *     description: "Creates a new recipe under the logged-in user's account. If a tag name provided does not exist as a system tag or a personal tag for the user, a new personal tag will be created."
+ *     description: |
+ *       Creates a new recipe.
+ *       - **Regular User**: Creates a **personal recipe** (visible to self and search).
+ *       - **Admin**: Creates a **system recipe** (official recipe, creatorId is null).
  *     requestBody:
  *       required: true
  *       content:
@@ -203,7 +206,7 @@ router.use(authMiddleware.verifyToken);
  *             schema:
  *               $ref: '#/components/schemas/RecipeResponse'
  *       '400':
- *         description: Bad Request or Validation Error
+ *         description: Bad Request
  *       '401':
  *         description: Unauthorized
  */
@@ -214,7 +217,7 @@ router.post('/', recipeController.create);
  * /api/recipes/my-recipes:
  *   get:
  *     summary: Get all recipes created by the user (personal recipes)
- *     tags: [Recipes]
+ *     tags: [Recipes &  Recipe-tags]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: query
@@ -244,7 +247,7 @@ router.get('/my-recipes', recipeController.getMyRecipes);
  * /api/recipes/search:
  *   get:
  *     summary: Search all recipes (system and user-created)
- *     tags: [Recipes]
+ *     tags: [Recipes &  Recipe-tags]
  *     description: "Public endpoint for recipe discovery. Searches across all system recipes and all user-created recipes."
  *     parameters:
  *       - in: query
@@ -252,9 +255,9 @@ router.get('/my-recipes', recipeController.getMyRecipes);
  *         schema: { type: string }
  *         description: "Search keyword for title, description, and ingredient names."
  *       - in: query
- *         name: tag
+ *         name: tagId
  *         schema: { type: string }
- *         description: "Filter recipes by a specific tag name."
+ *         description: "Filter recipes by a specific Tag ID (ObjectId). Use the Tag Suggestion API to get IDs."
  *       - in: query
  *         name: page
  *         schema: { type: integer, default: 1 }
@@ -273,10 +276,10 @@ router.get('/search', recipeController.search);
 
 /**
  * @swagger
- * /api/recipes/system:
+ * /api/recipes/system-recipes:
  *   get:
  *     summary: Get all system-wide recipes
- *     tags: [Recipes]
+ *     tags: [Recipes &  Recipe-tags]
  *     description: "Retrieves only the official, admin-created recipes."
  *     parameters:
  *       - in: query
@@ -284,9 +287,9 @@ router.get('/search', recipeController.search);
  *         schema: { type: string }
  *         description: "Search keyword within system recipes."
  *       - in: query
- *         name: tag
+ *         name: tagId
  *         schema: { type: string }
- *         description: "Filter system recipes by a specific tag name."
+ *         description: "Filter system recipes by a specific Tag ID (ObjectId)."
  *       - in: query
  *         name: page
  *         schema: { type: integer, default: 1 }
@@ -301,14 +304,14 @@ router.get('/search', recipeController.search);
  *             schema:
  *               $ref: '#/components/schemas/RecipeListResponse'
  */
-router.get('/system', recipeController.getSystem);
+router.get('/system-recipes', recipeController.getSystem);
 
 /**
  * @swagger
  * /api/recipes/suggestions:
  *   get:
  *     summary: Get recipe title suggestions (for autocomplete)
- *     tags: [Recipes]
+ *     tags: [Recipes &  Recipe-tags]
  *     description: "Optimized for speed. Returns a limited list of recipes whose titles START WITH the search query."
  *     parameters:
  *       - in: query
@@ -330,7 +333,7 @@ router.get('/suggestions', recipeController.getSuggestions);
  *     description: >
  *       So sánh nguyên liệu của một công thức (Recipe) với những gì user đang có (Available).
  *       Trả về danh sách các món còn thiếu (Missing) cần phải đi mua.
- *     tags: [Recipes]
+ *     tags: [Recipes &  Recipe-tags]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -384,7 +387,7 @@ router.get('/suggestions', recipeController.getSuggestions);
  *       500:
  *         description: Internal server error
  */
-router.post('/shopping-list/from-recipe', authMiddleware.verifyToken, recipeController.shoppingListFromRecipe);
+router.post('/shopping-list/from-recipe', recipeController.shoppingListFromRecipe);
 
 /**
  * @swagger
@@ -394,7 +397,7 @@ router.post('/shopping-list/from-recipe', authMiddleware.verifyToken, recipeCont
  *     description: >
  *       Gợi ý tên nguyên liệu dựa trên từ khóa nhập vào 
  *       Dùng cho chức năng "Typeahead/Autocomplete" khi user nhập liệu để đảm bảo chuẩn hóa dữ liệu.
- *     tags: [Recipes]
+ *     tags: [Recipes &  Recipe-tags]
  *     parameters:
  *       - in: query
  *         name: q
@@ -430,7 +433,7 @@ router.get('/master-data/ingredients', recipeController.masterDataIngredients);
  * /api/recipes/{recipeId}:
  *   get:
  *     summary: Get a single recipe by its ID
- *     tags: [Recipes]
+ *     tags: [Recipes &  Recipe-tags]
  *     parameters:
  *       - in: path
  *         name: recipeId
@@ -453,7 +456,7 @@ router.get('/:recipeId', recipeController.getById);
  * /api/recipes/{recipeId}:
  *   put:
  *     summary: Update a personal recipe (Owner or Admin only)
- *     tags: [Recipes]
+ *     tags: [Recipes &  Recipe-tags]
  *     security: [{ bearerAuth: [] }]
  *     description: "A user can only update a recipe if they are its creator, or if they are an admin."
  *     parameters:
@@ -481,14 +484,14 @@ router.get('/:recipeId', recipeController.getById);
  *       '404':
  *         description: Recipe not found
  */
-router.put('/:recipeId', authMiddleware.verifyToken, recipeController.update);
+router.put('/:recipeId', recipeController.update);
 
 /**
  * @swagger
  * /api/recipes/{recipeId}:
  *   delete:
  *     summary: Delete a personal recipe (Owner or Admin only)
- *     tags: [Recipes]
+ *     tags: [Recipes &  Recipe-tags]
  *     security: [{ bearerAuth: [] }]
  *     description: "A user can only delete a recipe if they are its creator, or if they are an admin."
  *     parameters:
@@ -514,6 +517,6 @@ router.put('/:recipeId', authMiddleware.verifyToken, recipeController.update);
  *       '404':
  *         description: Recipe not found
  */
-router.delete('/:recipeId', authMiddleware.verifyToken, recipeController.delete);
+router.delete('/:recipeId', recipeController.delete);
 
 export default router;

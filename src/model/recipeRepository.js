@@ -19,7 +19,7 @@ const recipeSchema = new mongoose.Schema(
       default: null, 
       index: true
     },
-    title: { type: String, required: true, trim: true },
+    title: { type: String, required: true, trim: true, index: true },
     description: { type: String, trim: true },
     imageUrl: { type: String, default: null },
     prepTime: { type: Number, default: 0, min: 0 }, // minutes

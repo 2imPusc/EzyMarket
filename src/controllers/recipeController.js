@@ -1,54 +1,74 @@
 import * as recipeService from '../services/recipeService.js';
+import mongoose from 'mongoose';
+import Recipe from '../model/recipeRepository.js';
 
 const create = async (req, res) => {
   try {
-    // Lấy user từ middleware
     const user = req.user;
-    
-    // ⚠️ QUAN TRỌNG: Middleware của bạn giải mã token ra req.user.
-    // Kiểm tra xem ID nằm ở key 'id' hay '_id'.
-    // Dựa vào middleware của bạn thì khả năng cao là 'user.id'.
-    const creatorId = user.id || user._id; 
+    // Nếu là admin thì creatorId = null (System Recipe)
+    // Nếu là user thường thì lấy ID của họ
+    const creatorId = user.role === 'admin' ? null : (user.id || user._id); 
 
-    if (!creatorId) {
-      return res.status(401).json({ message: 'Token không chứa thông tin ID người dùng hợp lệ.' });
+    // Nếu không phải admin mà cũng không có ID -> Lỗi
+    if (!creatorId && user.role !== 'admin') {
+      return res.status(401).json({ message: 'Token does not contain a valid user ID.' });
     }
 
-    // Truyền ID chuẩn vào service
     const recipe = await recipeService.createRecipe(creatorId, req.body);
     
     res.status(201).json({ 
-      message: 'Tạo công thức thành công', 
+      message: 'Recipe created successfully', 
       recipe 
     });
   } catch (error) {
-    console.error(error);
-    res.status(400).json({ message: error.message });
+    console.error('Create Recipe Error:', error);
+
+    if (
+      error.message.includes('Invalid format') || // Bắt lỗi định dạng ID
+      error.message.includes('not found') ||       // Bắt TẤT CẢ các lỗi "not found" (cho Ingredient, Unit, etc.)
+      error.message.includes('permission')     // Bắt lỗi quyền hạn
+    ) {
+      // Nếu là lỗi validation hoặc permission, trả về 400 Bad Request
+      return res.status(400).json({ message: error.message });
+    }
+
+    // Đối với các lỗi khác, trả về 500
+    res.status(500).json({ message: 'An unexpected error occurred while creating the recipe.' });
   }
 };
 
 const update = async (req, res) => {
   try {
     const { recipeId } = req.params;
-    
-    // --- SỬA ĐOẠN NÀY ---
     const user = req.user;
-    // Lấy id từ token, ưu tiên .id (theo middleware của bạn) hoặc ._id
     const userId = user.id || user._id; 
     
     if (!userId) {
         return res.status(401).json({ message: 'User ID not found in token' });
     }
-    // --------------------
 
     const isAdmin = req.user.role === 'admin';
     
-    // Truyền userId chuẩn vào service
     const recipe = await recipeService.updateRecipe(recipeId, userId, req.body, isAdmin);
     res.status(200).json({ message: 'Updated successfully', recipe });
   } catch (error) {
-    const status = error.message === 'Permission denied' ? 403 : 400;
-    res.status(status).json({ message: error.message });
+    console.error('Update Recipe Error:', error);
+
+    if (error.message === 'Permission denied') {
+      // Lỗi permission đặc biệt trả về 403 Forbidden
+      return res.status(403).json({ message: error.message });
+    }
+
+    if (
+      error.message.includes('Invalid format') ||
+      error.message.includes('not found')
+    ) {
+      // Các lỗi validation khác trả về 400 Bad Request
+      return res.status(400).json({ message: error.message });
+    }
+    
+    // Các lỗi còn lại là 500
+    res.status(500).json({ message: 'An unexpected error occurred while updating the recipe.' });
   }
 };
 
@@ -83,15 +103,18 @@ const getById = async (req, res) => {
     if (!recipe) return res.status(404).json({ message: 'Recipe not found' });
     res.json(recipe);
   } catch (error) {
-    res.status(400).json({ message: 'Invalid ID format or Error' });
+    res.status(400).json({ message: 'Invalid ID' });
   }
 };
 
-// Handles both Search and Get All
+// Search dùng tagId
 const search = async (req, res) => {
   try {
-    const { q, tag, page, limit } = req.query;
-    const result = await recipeService.searchRecipes({ q, tag, page, limit });
+    const { q, tagId, page, limit } = req.query; 
+    if (tagId && !mongoose.Types.ObjectId.isValid(tagId)) {
+       return res.status(400).json({ message: 'Invalid Tag ID format' });
+    }
+    const result = await recipeService.searchRecipes({ q, tagId, page, limit });
     res.json(result);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -100,14 +123,8 @@ const search = async (req, res) => {
 
 const getMyRecipes = async (req, res) => {
   try {
-    const user = req.user;
-    const userId = user.id || user._id; // Lấy ID chuẩn
-
-    if (!userId) return res.status(401).json({ message: 'User ID missing in token' });
-
-    const { q, page, limit } = req.query;
-    // Truyền userId vào service
-    const result = await recipeService.getMyRecipes(userId, { q, page, limit });
+    const userId = req.user.id || req.user._id;
+    const result = await recipeService.getMyRecipes(userId, req.query);
     res.json(result);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -116,78 +133,55 @@ const getMyRecipes = async (req, res) => {
 
 const getSystem = async (req, res) => {
   try {
-    const result = await recipeService.getSystemRecipes(req.query);
+    // Sửa: Nhận tagId thay vì tag
+    const { q, tagId, page, limit } = req.query;
+    const result = await recipeService.getSystemRecipes({ q, tagId, page, limit });
     res.json(result);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
+// SỬA LỖI QUAN TRỌNG: Phải nhận req, res và trả về response
 const getSuggestions = async (req, res) => {
   try {
     const { q } = req.query;
     if (!q) return res.json([]);
 
-    // Logic giống hệt ingredient suggestions: tìm các tiêu đề BẮT ĐẦU BẰNG query
-    const regex = new RegExp('^' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-
+    const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     const recipes = await Recipe.find({ title: regex })
-      .select('_id title imageUrl') // Chỉ lấy dữ liệu cần thiết
+      .select('_id title imageUrl')
       .limit(10)
-      .sort({ title: 1 });
-
+      .sort({ title: 1 })
+      .lean();
+      
     res.json(recipes);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * 1. Tạo Shopping List
- * Input: recipeId, availableIngredients (mảng tên các món đang có)
- * Output: Danh sách các món CẦN MUA (missing)
- */
 const shoppingListFromRecipe = async (req, res) => {
   try {
     const { recipeId, availableIngredients } = req.body;
-    if (!recipeId) {
-      return res.status(400).json({ message: 'recipeId is required' });
-    }
-
-    // Gọi service (Logic đã viết ở file service bước 1)
+    if (!recipeId) return res.status(400).json({ message: 'recipeId required' });
     const result = await recipeService.buildShoppingList(recipeId, availableIngredients || []);
-    
     res.json(result);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * 2. Master Data Ingredients (Autocomplete)
- * Input: ?q=thit&limit=10
- * Output: ["thịt bò", "thịt heo", ...]
- */
 const masterDataIngredients = async (req, res) => {
   try {
-    const { q, limit } = req.query;
-    // Gọi service
-    const docs = await recipeService.suggestIngredientNames(q, parseInt(limit) || 10);
-    // Trả về mảng string cho gọn
+    const docs = await recipeService.suggestIngredientNames(req.query.q, parseInt(req.query.limit) || 10);
     res.json({ suggestions: docs.map(d => d.name) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * 3. Get Tags (Hardcoded hoặc lấy từ DB)
- */
-const getTags = (req, res) => {
-  // Danh sách tag cố định của hệ thống
-  const tags = ['main', 'appetizer', 'dessert', 'drink', 'salad', 'soup', 'side', 'snack', 'other'];
-  res.json({ tags });
-};
+// ĐÃ XÓA: const getTags (Vì thừa, dùng tagController)
 
 export default {
   create,
@@ -197,8 +191,7 @@ export default {
   search,
   getMyRecipes,
   getSystem,
-  getSuggestions,
+  getSuggestions, // Đã fix thành controller
   shoppingListFromRecipe,
-  masterDataIngredients,
-  getTags
+  masterDataIngredients
 };
