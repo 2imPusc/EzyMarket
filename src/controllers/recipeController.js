@@ -161,13 +161,26 @@ const getSuggestions = async (req, res) => {
   }
 };
 
+/**
+ * 1. Tạo Shopping List (Cập nhật)
+ * Input: { recipeId, fridgeId (optional) }
+ * Output: Danh sách các món còn thiếu kèm số lượng cụ thể
+ */
 const shoppingListFromRecipe = async (req, res) => {
   try {
-    const { recipeId, availableIngredients } = req.body;
-    if (!recipeId) return res.status(400).json({ message: 'recipeId required' });
-    const result = await recipeService.buildShoppingList(recipeId, availableIngredients || []);
+    const { recipeId, fridgeId } = req.body;
+    const userId = req.user.id || req.user._id;
+
+    if (!recipeId) {
+      return res.status(400).json({ message: 'recipeId is required' });
+    }
+
+    // Gọi service với userId để tự động tìm trong tủ lạnh
+    const result = await recipeService.buildShoppingListFromFridge(recipeId, userId, fridgeId);
+    
     res.json(result);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: error.message });
   }
 };

@@ -329,13 +329,11 @@ router.get('/suggestions', recipeController.getSuggestions);
  * @swagger
  * /api/recipes/shopping-list/from-recipe:
  *   post:
- *     summary: Generate shopping list
- *     description: >
- *       So sánh nguyên liệu của một công thức (Recipe) với những gì user đang có (Available).
- *       Trả về danh sách các món còn thiếu (Missing) cần phải đi mua.
+ *     summary: Generate shopping list based on Fridge Inventory
  *     tags: [Recipes &  Recipe-tags]
  *     security:
  *       - bearerAuth: []
+ *     description: Calculates missing ingredients by comparing the recipe with the user's current fridge items (in-stock).
  *     requestBody:
  *       required: true
  *       content:
@@ -346,16 +344,12 @@ router.get('/suggestions', recipeController.getSuggestions);
  *             properties:
  *               recipeId:
  *                 type: string
- *                 example: "691d88c2dca4ab9a583ef239"
- *               availableIngredients:
- *                 type: array
- *                 description: Danh sách tên các nguyên liệu user đã có ở nhà.
- *                 items:
- *                   type: string
- *                 example: ["muối", "đường", "trứng"]
+ *               fridgeId:
+ *                 type: string
+ *                 description: Optional. Check a specific fridge only. If omitted, checks all user's fridges.
  *     responses:
  *       200:
- *         description: Shopping list generated
+ *         description: List of items to buy
  *         content:
  *           application/json:
  *             schema:
@@ -365,10 +359,8 @@ router.get('/suggestions', recipeController.getSuggestions);
  *                   type: string
  *                 title:
  *                   type: string
- *                   description: Tên món ăn
  *                 missing:
  *                   type: array
- *                   description: Danh sách nguyên liệu còn thiếu cần mua.
  *                   items:
  *                     type: object
  *                     properties:
@@ -376,12 +368,15 @@ router.get('/suggestions', recipeController.getSuggestions);
  *                         type: string
  *                       quantity:
  *                         type: number
- *                       unit:
+ *                         description: The quantity NEEDED (Recipe Qty - Available Qty)
+ *                       unitText:
  *                         type: string
- *                       note:
+ *                       inventoryNote:
  *                         type: string
- *                       optional:
- *                         type: boolean
+ *                         description: Warning if item exists but in different unit.
+ *                       haveQuantity:
+ *                         type: number
+ *                         description: Amount currently available in fridge (matching unit).
  *       400:
  *         description: Bad request (Missing ID)
  *       500:
