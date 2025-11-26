@@ -2,14 +2,13 @@ import mongoose from 'mongoose';
 
 const recipeIngredientSchema = new mongoose.Schema({
   ingredientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Ingredient', required: false },
-  name: { type: String, required: false, trim: true }, // Snapshot canonical name
-  quantity: { type: Number, required: false, min: 0 },
-  unit: { type: String, required: false, trim: true }, // Human readable input
-  unitId: { type: mongoose.Schema.Types.ObjectId, ref: 'Unit', required: false },
-  unitAbbreviation: { type: String, required: false, trim: true }, // Snapshot abbreviation
+  name: { type: String, required: true, trim: true }, // Snapshot canonical name
+  quantity: { type: Number, required: true, min: 0 },
+  unitId: { type: mongoose.Schema.Types.ObjectId, ref: 'Unit', required: false }, // Để liên kết & tính toán
+  unitText: { type: String, required: true, trim: true }, // Để hiển thị chính xác (vd: "muỗng cà phê", "củ")
   note: { type: String, required: false, trim: true },
   optional: { type: Boolean, default: false },
-}, { _id: true }); // Keep _id for subdocs to easy update
+}, { _id: false }); // _id không cần thiết cho sub-document này, giúp tiết kiệm dung lượng
 
 const recipeSchema = new mongoose.Schema(
   {
@@ -22,7 +21,7 @@ const recipeSchema = new mongoose.Schema(
     servings: { type: Number, default: 1, min: 1 },
     directions: [{ type: String, trim: true }],
     ingredients: [recipeIngredientSchema],
-    tag: { type: String, default: 'other', index: true, lowercase: true, trim: true },
+    tags: [{ type: String, trim: true, lowercase: true }],
   },
   {
     timestamps: true,

@@ -289,68 +289,6 @@ router.get('/search', recipeController.search);
 
 /**
  * @swagger
- * /api/recipes/suggestions:
- *   post:
- *     summary: Suggest recipes based on available ingredients
- *     description: >
- *       Gợi ý các món ăn dựa trên danh sách nguyên liệu người dùng đang có.
- *       Sử dụng thuật toán tính điểm (Score) dựa trên tỷ lệ khớp nguyên liệu bắt buộc.
- *     tags: [Recipes]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [availableIngredients]
- *             properties:
- *               availableIngredients:
- *                 type: array
- *                 description: Danh sách tên các nguyên liệu người dùng có.
- *                 items:
- *                   type: string
- *                 example: ["thịt bò", "trứng", "hành tây"]
- *               threshold:
- *                 type: number
- *                 default: 0.6
- *                 description: Ngưỡng điểm phù hợp tối thiểu (0.0 - 1.0).
- *               limit:
- *                 type: integer
- *                 default: 20
- *                 description: Số lượng gợi ý tối đa.
- *     responses:
- *       200:
- *         description: List of suggested recipes with scores
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 suggestions:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       recipe:
- *                         $ref: '#/components/schemas/RecipeResponse'
- *                       score:
- *                         type: number
- *                         description: Điểm phù hợp (1.0 là khớp hoàn toàn).
- *                       matchedCount:
- *                         type: integer
- *                         description: Số nguyên liệu khớp.
- *                       totalRequired:
- *                         type: integer
- *                         description: Tổng số nguyên liệu bắt buộc của món này.
- *       500:
- *         description: Internal server error
- */
-router.post('/suggestions', authMiddleware.verifyToken, recipeController.suggestions);
-
-/**
- * @swagger
  * /api/recipes/shopping-list/from-recipe:
  *   post:
  *     summary: Generate shopping list

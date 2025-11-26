@@ -68,6 +68,22 @@ const fridgeController = {
       res.status(500).json({ message: 'Error deleting fridge.', error: err.message });
     }
   },
+
+  getRecipeSuggestions: async (req, res) => {
+    try {
+      const { fridgeId } = req.params;
+      const { threshold = 0.6, limit = 10 } = req.query; // Lấy options từ query params
+
+      const suggestions = await fridgeService.suggestRecipesForFridge(fridgeId, { 
+        threshold: parseFloat(threshold), 
+        limit: parseInt(limit) 
+      });
+
+      res.status(200).json({ suggestions });
+    } catch (err) {
+      res.status(500).json({ message: 'Error getting recipe suggestions.', error: err.message });
+    }
+  }
 };
 
 export default fridgeController;

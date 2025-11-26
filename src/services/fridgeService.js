@@ -1,5 +1,6 @@
 import Fridge from '../model/fridgeRepository.js';
 import FridgeItem from '../model/fridgeItemRepository.js';
+import * as recipeService from './recipeService.js';
 
 const fridgeService = {
   /**
@@ -58,6 +59,47 @@ const fridgeService = {
     // Lưu ý: Trong ứng dụng thực tế phức tạp hơn, bạn có thể cân nhắc
     // sử dụng Transactions để đảm bảo cả hai thao tác này cùng thành công hoặc cùng thất bại.
   },
+
+  /**
+   * Gợi ý công thức nấu ăn dựa trên các nguyên liệu có sẵn trong một tủ lạnh cụ thể.
+   * @param {string} fridgeId - ID của tủ lạnh.
+   * @param {object} options - Tùy chọn { threshold, limit }.
+   * @returns {Promise<Array>} - Mảng các công thức đã được làm giàu thông tin.
+   */
+  suggestRecipesForFridge: async (fridgeId, options) => {
+    // 1. Lấy tất cả các nguyên liệu đang có trong tủ lạnh
+    const availableItems = await FridgeItem.find({ fridgeId, status: 'in-stock' })
+      .populate('foodId', 'name') // Chỉ lấy trường 'name' từ Ingredient
+      .lean();
+
+    // 2. Tạo một Set các tên nguyên liệu (đã chuẩn hóa) để tra cứu nhanh
+    const availableIngredientNames = availableItems.map(item => item.foodId?.name);
+    const availableSet = new Set(availableIngredientNames.map(name => (name || '').toLowerCase().trim()));
+
+    // 3. Gọi service gợi ý của recipe với danh sách tên nguyên liệu
+    const suggestions = await recipeService.suggestRecipes(availableIngredientNames, options);
+
+    // 4. Làm giàu dữ liệu trả về: thêm thông tin thiếu/đủ
+    const enhancedSuggestions = suggestions.map(recipe => {
+      const missingIngredients = recipe.ingredients
+        .filter(ing => 
+          !ing.optional && // Chỉ xét nguyên liệu bắt buộc
+          !availableSet.has((ing.name || '').toLowerCase().trim()) // Kiểm tra xem có trong tủ lạnh không
+        )
+        .map(ing => ({ name: ing.name, quantity: ing.quantity, unit: ing.unitText }));
+      
+      const missingCount = missingIngredients.length;
+
+      return {
+        ...recipe, // Giữ lại các trường gốc như _id, title, score, ...
+        missingCount,
+        isReadyToCook: missingCount === 0,
+        missingIngredients,
+      };
+    });
+
+    return enhancedSuggestions;
+  }
 };
 
 export default fridgeService;

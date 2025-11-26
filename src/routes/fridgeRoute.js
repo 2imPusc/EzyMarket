@@ -229,6 +229,38 @@ router.delete(
 
 /**
  * @swagger
+ * /api/fridges/{fridgeId}/recipe-suggestions:
+ *   get:
+ *     summary: Get recipe suggestions based on items in a specific fridge
+ *     tags: [Fridges & Fridge Items]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: fridgeId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: threshold
+ *         schema: { type: number, default: 0.6 }
+ *         description: "Minimum match score (from 0 to 1) to be included."
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10 }
+ *         description: "Maximum number of suggestions to return."
+ *     responses:
+ *       200:
+ *         description: A list of recipe suggestions
+ *       403:
+ *         description: Forbidden
+ */
+router.get(
+  '/:fridgeId/recipe-suggestions',
+  ownershipMiddleware.verifyFridgeOwnership, // Quan trọng: Đảm bảo người dùng sở hữu tủ lạnh này
+  fridgeController.getRecipeSuggestions
+);
+
+/**
+ * @swagger
  * /api/fridges/{fridgeId}/items:
  *   post:
  *     summary: Add a new item to a fridge

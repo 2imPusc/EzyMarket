@@ -7,28 +7,27 @@ const resolveIngredients = async (ingredientsInput) => {
   if (!Array.isArray(ingredientsInput)) return [];
 
   return Promise.all(ingredientsInput.map(async (item) => {
-    let name = item.name;
-    let unitAbbreviation = item.unitAbbreviation || item.unit;
+    let resolvedName = item.name;
+    let resolvedUnitText = item.unitText || item.unit; // Hỗ trợ cả key cũ "unit"
 
-    // 1. Resolve Ingredient Name by ID
+    // Cố gắng tìm tên chuẩn từ ingredientId
     if (item.ingredientId && mongoose.Types.ObjectId.isValid(item.ingredientId)) {
       const ingDoc = await Ingredient.findById(item.ingredientId).select('name').lean();
-      if (ingDoc) name = ingDoc.name;
+      if (ingDoc) resolvedName = ingDoc.name;
     }
 
-    // 2. Resolve Unit Abbreviation by ID
+    // Nếu người dùng cung cấp unitId, ưu tiên lấy tên/viết tắt từ đó làm unitText
     if (item.unitId && mongoose.Types.ObjectId.isValid(item.unitId)) {
-      const unitDoc = await Unit.findById(item.unitId).select('abbreviation name').lean();
-      if (unitDoc) unitAbbreviation = unitDoc.abbreviation || unitDoc.name;
+      const unitDoc = await Unit.findById(item.unitId).select('name abbreviation').lean();
+      if (unitDoc) resolvedUnitText = unitDoc.abbreviation || unitDoc.name;
     }
 
     return {
       ingredientId: item.ingredientId || null,
-      name: name || 'Unknown Ingredient', // Fallback
+      name: resolvedName || 'Unknown Ingredient',
       quantity: item.quantity || 0,
-      unit: item.unit || null, // Input raw unit
       unitId: item.unitId || null,
-      unitAbbreviation: unitAbbreviation || null, // Snapshot
+      unitText: resolvedUnitText || '', // Luôn đảm bảo có giá trị
       note: item.note || '',
       optional: !!item.optional,
     };
@@ -97,7 +96,7 @@ export const searchRecipes = async ({ q, tag, page = 1, limit = 20 }) => {
   const lim = parseInt(limit);
   
   const filter = {};
-  if (tag) filter.tag = tag;
+  if (tag) filter.tags = tag;
   if (q) filter.$text = { $search: q };
 
   // Sorting: Nếu search text thì sort theo độ khớp (score), nếu không thì sort mới nhất
