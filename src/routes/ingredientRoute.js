@@ -79,11 +79,6 @@ router.use(authMiddleware.verifyToken);
  *         defaultExpireDays:
  *           type: integer
  *           description: "(Optional) Default expiration days."
- *         creatorId:
- *           type: object
- *           nullable: true
- *           description: "(Admin Only) Send `null` to create a system-wide ingredient. Omit for user-specific."
- *           example: null
  *
  *     IngredientListResponse:
  *       type: object
@@ -156,8 +151,9 @@ router.use(authMiddleware.verifyToken);
  *     security:
  *       - bearerAuth: []
  *     description: |
- *       - Regular users can create their own personal ingredients.
- *       - Admins can create personal ingredients, OR create a system-wide ingredient by providing `"creatorId": null` in the request body.
+ *       Creates a new ingredient based on the user's role:
+ *       - **Regular Users**: Create a **personal ingredient** (visible only to them).
+ *       - **Admins**: Automatically create a **system-wide ingredient** (visible to everyone).
  *     requestBody:
  *       required: true
  *       content:
@@ -172,7 +168,7 @@ router.use(authMiddleware.verifyToken);
  *             schema:
  *               $ref: '#/components/schemas/IngredientSuccessResponse' 
  *       '400':
- *         description: Bad Request (e.g., missing required fields)
+ *         description: Bad Request
  *         content:
  *           application/json:
  *             schema:
