@@ -1,23 +1,21 @@
 import Ingredient from '../model/ingredientRepository.js';
-import { DEFAULT_EXPIRE_DAYS } from '../model/ingredientRepository.js';
+import { DEFAULT_EXPIRE_DAYS, INGREDIENT_CATEGORIES } from '../model/ingredientRepository.js';
 
 const ingredientController = {
-  // CREATE - Thêm nguyên liệu mới (hỗ trợ cả user và admin)
   create: async (req, res) => {
     try {
       const { name, imageURL, foodCategory, defaultExpireDays } = req.body;
-      const { id: userId, role } = req.user; // Lấy thông tin người dùng từ token
+      const { id: userId, role } = req.user; 
 
       if (!name || !foodCategory) {
         return res.status(400).json({ message: 'Name and foodCategory are required' });
       }
 
-      // -- LOGIC MỚI --
-      // Nếu người dùng là admin và muốn tạo nguyên liệu hệ thống, họ có thể gửi creatorId: null
-      // Nếu không, creatorId sẽ là id của người dùng đang đăng nhập.
-      const creatorId = (role === 'admin' && req.body.creatorId === null) ? null : userId;
+      // Nếu là admin, creatorId LUÔN LUÔN là null (System Ingredient)
+      // Nếu là user, creatorId là userId
+      const creatorId = role === 'admin' ? null : userId;
+      // -----------------------
       
-      // Kiểm tra trùng lặp dựa trên cả tên và người tạo
       const existingIngredient = await Ingredient.findOne({ 
         name: name.toLowerCase(), 
         creatorId: creatorId 
@@ -27,14 +25,14 @@ const ingredientController = {
         const message = creatorId === null 
           ? 'An ingredient with this name already exists in the system.'
           : 'You already have a custom ingredient with this name.';
-        return res.status(409).json({ message }); // 409 Conflict: Trùng lặp
+        return res.status(409).json({ message });
       }
 
       const ingredientData = {
         name: name.toLowerCase(),
         imageURL: imageURL || null,
         foodCategory,
-        creatorId: creatorId, // <-- THÊM CREATOR_ID
+        creatorId: creatorId, 
       };
       if (defaultExpireDays !== undefined) ingredientData.defaultExpireDays = defaultExpireDays;
 
@@ -119,7 +117,6 @@ const ingredientController = {
     }
   },
 
-  // UPDATE - Cập nhật nguyên liệu (có kiểm tra quyền)
   update: async (req, res) => {
     try {
       const { id: ingredientId } = req.params;
@@ -130,63 +127,73 @@ const ingredientController = {
         return res.status(404).json({ message: 'Ingredient not found' });
       }
 
-      // -- LOGIC MỚI: KIỂM TRA QUYỀN SỞ HỮU --
-      // Cho phép sửa nếu:
-      // 1. Bạn là admin.
-      // 2. Hoặc, đây là nguyên liệu của bạn (creatorId khớp với userId).
-      const isOwner = ingredient.creatorId && ingredient.creatorId.toString() === userId;
-      if (role !== 'admin' && !isOwner) {
-        return res.status(403).json({ message: 'Forbidden: You do not have permission to update this ingredient.' });
+      // --- LOGIC CHECK QUYỀN ---
+      if (role === 'admin') {
+          // Admin được sửa TẤT CẢ (System + User Personal)
+          // HOẶC: Admin chỉ sửa System? -> Thường thì Admin sửa được System là đủ.
+          // Nhưng để an toàn cho hệ thống, ta nên giới hạn:
+          // Admin chỉ sửa System Ingredient (creatorId == null)
+          if (ingredient.creatorId !== null) {
+              // Tùy nhu cầu: Nếu bạn muốn admin sửa bài user thì bỏ dòng này
+             // return res.status(403).json({ message: 'Admin can only update System Ingredients.' });
+          }
+      } else {
+          // User thường: Phải là chủ sở hữu
+          if (ingredient.creatorId?.toString() !== userId) {
+              return res.status(403).json({ message: 'Forbidden' });
+          }
       }
 
-      // ... (Phần logic update bên dưới giữ nguyên)
       const { name, imageURL, foodCategory, defaultExpireDays } = req.body;
+      
+      // Check trùng tên
       if (name && name.toLowerCase() !== ingredient.name) {
         const duplicate = await Ingredient.findOne({ 
           name: name.toLowerCase(), 
-          creatorId: ingredient.creatorId,
-          _id: { $ne: ingredientId } // Loại trừ chính nó
+          creatorId: ingredient.creatorId, // Giữ nguyên creatorId cũ (để tránh biến System -> Personal)
+          _id: { $ne: ingredientId } 
         });
         if (duplicate) {
-          return res.status(409).json({ message: 'An ingredient with this name already exists.' });
+          return res.status(409).json({ message: 'Ingredient name already exists.' });
         }
         ingredient.name = name.toLowerCase();
       }
-      // ... (Các phần if còn lại giữ nguyên)
+      
+      if (imageURL !== undefined) ingredient.imageURL = imageURL;
+      if (foodCategory) ingredient.foodCategory = foodCategory;
+      if (defaultExpireDays !== undefined) ingredient.defaultExpireDays = defaultExpireDays;
 
       await ingredient.save();
-      res.status(200).json({
-        message: 'Ingredient updated successfully',
-        ingredient,
-      });
+      res.status(200).json({ message: 'Updated successfully', ingredient });
     } catch (err) {
-      console.error('Update ingredient error:', err);
+      console.error(err);
       res.status(500).json({ message: 'Internal server error' });
     }
   },
 
-  // DELETE - Xóa nguyên liệu (có kiểm tra quyền)
+  // DELETE - Tương tự Update
   delete: async (req, res) => {
     try {
       const { id: ingredientId } = req.params;
       const { id: userId, role } = req.user;
 
       const ingredient = await Ingredient.findById(ingredientId);
-      if (!ingredient) {
-        return res.status(404).json({ message: 'Ingredient not found' });
-      }
+      if (!ingredient) return res.status(404).json({ message: 'Not found' });
 
-      // -- LOGIC MỚI: KIỂM TRA QUYỀN SỞ HỮU --
-      const isOwner = ingredient.creatorId && ingredient.creatorId.toString() === userId;
-      if (role !== 'admin' && !isOwner) {
-        return res.status(403).json({ message: 'Forbidden: You do not have permission to delete this ingredient.' });
+      // Check quyền
+      if (role === 'admin') {
+          // Admin có thể xóa System Ingredient
+          // (Có thể chặn Admin xóa Personal Ingredient của user nếu muốn)
+      } else {
+          // User chỉ xóa của mình
+          if (ingredient.creatorId?.toString() !== userId) {
+             return res.status(403).json({ message: 'Forbidden' });
+          }
       }
       
-      // Logic xóa
       await Ingredient.findByIdAndDelete(ingredientId);
-      res.status(200).json({ message: 'Ingredient deleted successfully' });
+      res.status(200).json({ message: 'Deleted successfully' });
     } catch (err) {
-      console.error('Delete ingredient error:', err);
       res.status(500).json({ message: 'Internal server error' });
     }
   },
@@ -225,12 +232,7 @@ const ingredientController = {
   // GET CATEGORIES - Lấy danh sách các categories
   getCategories: async (req, res) => {
     try {
-      const categories = [
-        'vegetables', 'fruits', 'meat', 'seafood', 'dairy', 
-        'grains', 'spices', 'beverages', 'condiments', 'frozen',
-        'canned', 'bakery', 'snacks', 'other'
-      ];
-      res.status(200).json({ categories });
+      res.status(200).json({ categories: INGREDIENT_CATEGORIES });
     } catch (err) {
       console.error('Get categories error:', err);
       res.status(500).json({ message: 'Internal server error' });

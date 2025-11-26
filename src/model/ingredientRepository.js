@@ -1,21 +1,23 @@
 import mongoose from 'mongoose';
 
 export const DEFAULT_EXPIRE_DAYS = {
-  vegetables: 5,
-  fruits: 7,
-  meat: 3,
-  seafood: 2,
-  dairy: 5,
-  grains: 180,
-  spices: 365,
-  beverages: 30,
-  condiments: 180,
-  frozen: 180,
-  canned: 365,
-  bakery: 3,
-  snacks: 90,
+  vegetables: 5,      // Rau củ
+  fruits: 7,          // Trái cây
+  meat: 3,            // Thịt
+  seafood: 2,         // Hải sản
+  dairy: 5,           // Sữa và chế phẩm
+  grains: 180,        // Ngũ cốc
+  spices: 365,        // Gia vị
+  beverages: 30,      // Đồ uống
+  condiments: 180,    // Gia vị/Nước chấm
+  frozen: 180,        // Đồ đông lạnh
+  canned: 365,        // Đồ hộp
+  bakery: 3,          // Bánh mì/Bánh ngọt
+  snacks: 90,         // Đồ ăn vặt
   other: 7,
 };
+
+export const INGREDIENT_CATEGORIES = Object.keys(DEFAULT_EXPIRE_DAYS);
 
 const ingredientSchema = new mongoose.Schema({
   creatorId: {
@@ -38,22 +40,7 @@ const ingredientSchema = new mongoose.Schema({
   foodCategory: {
     type: String,
     required: true,
-    enum: [
-      'vegetables',      // Rau củ
-      'fruits',          // Trái cây
-      'meat',            // Thịt
-      'seafood',         // Hải sản
-      'dairy',           // Sữa và chế phẩm
-      'grains',          // Ngũ cốc
-      'spices',          // Gia vị
-      'beverages',       // Đồ uống
-      'condiments',      // Gia vị/Nước chấm
-      'frozen',          // Đồ đông lạnh
-      'canned',          // Đồ hộp
-      'bakery',          // Bánh mì/Bánh ngọt
-      'snacks',          // Đồ ăn vặt
-      'other',           // Khác
-    ],
+    enum: INGREDIENT_CATEGORIES,
     default: 'other',
   },
   defaultExpireDays: {
