@@ -8,6 +8,7 @@ import groupRoutes from './routes/groupRoute.js';
 import ingredientRoutes from './routes/ingredientRoute.js';
 import unitRoutes from './routes/unitRoute.js';
 import recipeRoutes from './routes/recipeRoute.js';
+import tagRoutes from './routes/tagRoute.js';
 import fridgeRoutes from './routes/fridgeRoute.js';
 import { swaggerUi, swaggerSpec } from './config/swagger.js';
 import uploadRouter from './routes/upload.routes.js';
@@ -27,6 +28,7 @@ app.use('/api/ingredients', ingredientRoutes);
 app.use('/api/units', unitRoutes);
 app.use('/api/fridges', fridgeRoutes);
 app.use('/api/recipes', recipeRoutes);
+app.use('/api/tags', tagRoutes);
 app.use('/api/uploadthing', uploadRouter);
 
 const PORT = process.env.PORT || 5000;

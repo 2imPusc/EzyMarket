@@ -12,7 +12,13 @@ const recipeIngredientSchema = new mongoose.Schema({
 
 const recipeSchema = new mongoose.Schema(
   {
-    creatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    creatorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',  
+      // THAY ĐỔI required: true thành default: null
+      default: null, 
+      index: true
+    },
     title: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
     imageUrl: { type: String, default: null },
@@ -21,7 +27,10 @@ const recipeSchema = new mongoose.Schema(
     servings: { type: Number, default: 1, min: 1 },
     directions: [{ type: String, trim: true }],
     ingredients: [recipeIngredientSchema],
-    tags: [{ type: String, trim: true, lowercase: true }],
+    tags: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tag', 
+    }],
   },
   {
     timestamps: true,

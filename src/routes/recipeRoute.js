@@ -4,11 +4,25 @@ import authMiddleware from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
+router.use(authMiddleware.verifyToken);
+
+// ===============================================
+//           SWAGGER DEFINITIONS
+// ===============================================
+
+/**
+ * @swagger
+ * tags:
+ *   name: Recipes
+ *   description: API for managing system-wide and user-created recipes
+ */
+
 /**
  * @swagger
  * components:
  *   schemas:
- *     IngredientRecipeInput:
+ *     # Schemas for Input (Request Body)
+ *     RecipeIngredientInput:
  *       type: object
  *       required: [name]
  *       properties:
@@ -40,96 +54,141 @@ const router = express.Router();
  *           type: boolean
  *           default: false
  *           description: Đánh dấu nguyên liệu này có thể bỏ qua.
- * 
+ *
  *     RecipeInput:
  *       type: object
- *       required: [title, ingredients]
+ *       required:
+ *         - title
+ *         - ingredients
  *       properties:
  *         title:
  *           type: string
- *           description: Tên món ăn.
- *           example: "Phở Bò Tái Nạm"
+ *           example: "Bò Lúc Lắc"
  *         description:
  *           type: string
- *           description: Mô tả ngắn gọn về món ăn.
- *           example: "Món phở truyền thống với nước dùng đậm đà."
+ *           example: "Món bò xào mềm ngon đậm đà, ăn cùng cơm trắng."
  *         imageUrl:
  *           type: string
- *           format: uri
- *           description: Đường dẫn ảnh món ăn.
  *         prepTime:
  *           type: integer
- *           minimum: 0
- *           description: Thời gian sơ chế (phút).
+ *           description: "Preparation time in minutes."
  *           example: 15
  *         cookTime:
  *           type: integer
- *           minimum: 0
- *           description: Thời gian nấu (phút).
- *           example: 45  
+ *           description: "Cooking time in minutes."
+ *           example: 10
  *         servings:
  *           type: integer
- *           minimum: 1
- *           description: Khẩu phần ăn (số người).
+ *           description: "Number of servings."
  *           example: 2
  *         directions:
  *           type: array
- *           description: Các bước thực hiện.
  *           items:
  *             type: string
- *           example: ["Rửa sạch xương bò", "Ninh xương trong 8 tiếng", "Trần phở và thịt"]
- *         tag:
- *           type: string
- *           enum: [main, appetizer, dessert, drink, salad, soup, side, snack, other]
- *           default: other
- *           description: Phân loại món ăn.
- *           example: "main"
+ *           example: ["Bước 1: Thái thịt bò...", "Bước 2: Ướp gia vị..."]
  *         ingredients:
  *           type: array
  *           items:
- *             $ref: '#/components/schemas/IngredientRecipeInput'
+ *             $ref: '#/components/schemas/RecipeIngredientInput'
+ *         tags:
+ *           type: array
+ *           items:
+ *             type: string
+ *           description: "An array of tag names. Personal tags will be created on-the-fly if they don't exist."
+ *           example: ["món chính", "thịt bò", "món đãi tiệc"]
+ *
+ *     TagResponse:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *         name:
+ *           type: string
+ *         creatorId:
+ *           type: string
+ *           nullable: true
+ *
+ *     RecipeIngredientResponse:
+ *       type: object
+ *       properties:
+ *         ingredientId:
+ *           type: object
+ *           properties:
+ *             _id:
+ *               type: string
+ *             name:
+ *               type: string
+ *         quantity:
+ *           type: number
+ *         unitText:
+ *           type: string
+ *         unitId:
+ *           type: string
+ *           description: MongoDB ObjectId của đơn vị tính (nếu có).
+ *           example: "60d5ecb8b5c9e67890123457"
+ *         note:
+ *           type: string
+ *         optional:
+ *           type: boolean
  *
  *     RecipeResponse:
  *       type: object
  *       properties:
  *         _id:
  *           type: string
+ *         creatorId:
+ *           type: object
+ *           nullable: true
+ *           description: "Null for system recipes. Populated user object for personal recipes."
+ *           properties:
+ *             _id:
+ *               type: string
+ *             userName:
+ *               type: string
  *         title:
  *           type: string
- *         creatorId:
+ *         description:
  *           type: string
- *           description: ID của người tạo.
- *         ingredients:
+ *         tags:
  *           type: array
  *           items:
- *             allOf:
- *               - $ref: '#/components/schemas/IngredientRecipeInput'
- *               - type: object
- *                 properties:
- *                   unitAbbreviation:
- *                     type: string
- *       createdAt:
- *         type: string
- *         format: date-time
- *       updatedAt:
- *         type: string
- *         format: date-time
+ *             $ref: '#/components/schemas/TagResponse'
+ *         # ... các trường khác như ingredients, directions, etc.
+ *
+ *     RecipeListResponse:
+ *       type: object
+ *       properties:
+ *         recipes:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/RecipeResponse'
+ *         pagination:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *             page:
+ *               type: integer
+ *             limit:
+ *               type: integer
+ *             totalPages:
+ *               type: integer
  */
+
+// ===============================================
+//               ROUTES DEFINITIONS
+// ===============================================
+
+router.use(authMiddleware.verifyToken);
 
 /**
  * @swagger
  * /api/recipes:
  *   post:
- *     summary: Create a new recipe
- *     description: >
- *       Tạo công thức nấu ăn mới. 
- *       Hệ thống hỗ trợ cơ chế "Snapshot":
- *       - Nếu cung cấp `ingredientId`, server sẽ tự động lấy tên chuẩn (Canonical Name) từ DB.
- *       - Nếu cung cấp `unitId`, server sẽ tự động lấy tên viết tắt (Abbreviation) từ DB.
- *       - Nếu không có ID, hệ thống sẽ sử dụng `name` và `unit` do người dùng nhập vào.
+ *     summary: Create a new personal recipe
  *     tags: [Recipes]
- *     security:
- *       - bearerAuth: []
+ *     security: [{ bearerAuth: [] }]
+ *     description: "Creates a new recipe under the logged-in user's account. If a tag name provided does not exist as a system tag or a personal tag for the user, a new personal tag will be created."
  *     requestBody:
  *       required: true
  *       content:
@@ -137,155 +196,131 @@ const router = express.Router();
  *           schema:
  *             $ref: '#/components/schemas/RecipeInput'
  *     responses:
- *       201:
+ *       '201':
  *         description: Recipe created successfully
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Created successfully"
- *                 recipe:
- *                   $ref: '#/components/schemas/RecipeResponse'
- *       400:
- *         description: Validation error (Missing title, ingredients or invalid data)
- *       401:
- *         description: Unauthorized (Invalid or missing token)
- *       500:
- *         description: Internal server error
+ *               $ref: '#/components/schemas/RecipeResponse'
+ *       '400':
+ *         description: Bad Request or Validation Error
+ *       '401':
+ *         description: Unauthorized
  */
-router.post('/', authMiddleware.verifyToken, recipeController.create);
+router.post('/', recipeController.create);
 
 /**
  * @swagger
  * /api/recipes/my-recipes:
  *   get:
- *     summary: Get recipes created by current user
- *     description: >
- *       Lấy danh sách các công thức do chính người dùng đang đăng nhập tạo ra.
- *       Kết quả hỗ trợ tìm kiếm (trong phạm vi bài của mình) và phân trang.
+ *     summary: Get all recipes created by the user (personal recipes)
  *     tags: [Recipes]
- *     security:
- *       - bearerAuth: []
+ *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: query
  *         name: q
- *         schema:
- *           type: string
- *         description: Tìm kiếm trong danh sách bài của tôi (theo tiêu đề).
+ *         schema: { type: string }
+ *         description: "Search keyword within the user's recipes."
  *       - in: query
  *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *           minimum: 1
- *         description: Trang hiện tại.
+ *         schema: { type: integer, default: 1 }
  *       - in: query
  *         name: limit
- *         schema:
- *           type: integer
- *           default: 20
- *           minimum: 1
- *           maximum: 100
- *         description: Số lượng bài mỗi trang.
+ *         schema: { type: integer, default: 20 }
  *     responses:
- *       200:
- *         description: List of user's recipes
+ *       '200':
+ *         description: A paginated list of the user's personal recipes.
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 recipes:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/RecipeResponse'
- *                 total:
- *                   type: integer
- *                   example: 5
- *                 page:
- *                   type: integer
- *                   example: 1
- *                 limit:
- *                   type: integer
- *                   example: 20
- *                 totalPages:
- *                   type: integer
- *                   example: 1
- *       401:
- *         description: Unauthorized (Token missing or invalid)
- *       500:
- *         description: Internal server error
+ *               $ref: '#/components/schemas/RecipeListResponse'
+ *       '401':
+ *         description: Unauthorized
  */
-router.get('/my-recipes', authMiddleware.verifyToken, recipeController.getMyRecipes);
+router.get('/my-recipes', recipeController.getMyRecipes);
 
 /**
  * @swagger
  * /api/recipes/search:
  *   get:
- *     summary: Search and list recipes
- *     description: >
- *       Tìm kiếm công thức nấu ăn với bộ lọc và phân trang.
- *       Có thể tìm theo từ khóa (q) hoặc lọc theo thẻ (tag).
- *       Kết quả được sắp xếp theo độ liên quan (nếu tìm kiếm) hoặc mới nhất.
+ *     summary: Search all recipes (system and user-created)
  *     tags: [Recipes]
+ *     description: "Public endpoint for recipe discovery. Searches across all system recipes and all user-created recipes."
  *     parameters:
  *       - in: query
  *         name: q
- *         schema:
- *           type: string
- *         description: Từ khóa tìm kiếm (tìm trong tên món, mô tả và tên nguyên liệu).
+ *         schema: { type: string }
+ *         description: "Search keyword for title, description, and ingredient names."
  *       - in: query
  *         name: tag
- *         schema:
- *           type: string
- *           enum: [main, appetizer, dessert, drink, salad, soup, side, snack, other]
- *         description: Lọc theo loại món ăn.
+ *         schema: { type: string }
+ *         description: "Filter recipes by a specific tag name."
  *       - in: query
  *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *           minimum: 1
- *         description: Số trang.
+ *         schema: { type: integer, default: 1 }
  *       - in: query
  *         name: limit
- *         schema:
- *           type: integer
- *           default: 20
- *           minimum: 1
- *           maximum: 100
- *         description: Số lượng kết quả mỗi trang.
+ *         schema: { type: integer, default: 20 }
  *     responses:
- *       200:
- *         description: List of recipes with pagination info
+ *       '200':
+ *         description: A paginated list of found recipes.
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 recipes:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/RecipeResponse'
- *                 total:
- *                   type: integer
- *                   example: 150
- *                 page:
- *                   type: integer
- *                   example: 1
- *                 limit:
- *                   type: integer
- *                   example: 20
- *                 totalPages:
- *                   type: integer
- *                   example: 8
- *       500:
- *         description: Internal server error
+ *               $ref: '#/components/schemas/RecipeListResponse'
  */
 router.get('/search', recipeController.search);
+
+/**
+ * @swagger
+ * /api/recipes/system:
+ *   get:
+ *     summary: Get all system-wide recipes
+ *     tags: [Recipes]
+ *     description: "Retrieves only the official, admin-created recipes."
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema: { type: string }
+ *         description: "Search keyword within system recipes."
+ *       - in: query
+ *         name: tag
+ *         schema: { type: string }
+ *         description: "Filter system recipes by a specific tag name."
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       '200':
+ *         description: A paginated list of system recipes.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/RecipeListResponse'
+ */
+router.get('/system', recipeController.getSystem);
+
+/**
+ * @swagger
+ * /api/recipes/suggestions:
+ *   get:
+ *     summary: Get recipe title suggestions (for autocomplete)
+ *     tags: [Recipes]
+ *     description: "Optimized for speed. Returns a limited list of recipes whose titles START WITH the search query."
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         required: true
+ *         schema: { type: string }
+ *         description: "The search query prefix (e.g., 'bò')."
+ *     responses:
+ *       '200':
+ *         description: A list of recipe title suggestions.
+ */
+router.get('/suggestions', recipeController.getSuggestions);
 
 /**
  * @swagger
@@ -392,63 +427,24 @@ router.get('/master-data/ingredients', recipeController.masterDataIngredients);
 
 /**
  * @swagger
- * /api/recipes/tags:
- *   get:
- *     summary: Get list of recipe categories (tags)
- *     description: Trả về danh sách các thẻ phân loại món ăn. Dùng để hiển thị bộ lọc ở Frontend.
- *     tags: [Recipes]
- *     responses:
- *       200:
- *         description: List of tags
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 tags:
- *                   type: array
- *                   items:
- *                     type: string
- *                   example: ["main", "appetizer", "dessert"]
- */
-router.get('/tags', recipeController.getTags);
-
-/**
- * @swagger
  * /api/recipes/{recipeId}:
  *   get:
- *     summary: Get recipe details
- *     description: Lấy thông tin chi tiết của một công thức, bao gồm thông tin người tạo (creator) đã được populate.
+ *     summary: Get a single recipe by its ID
  *     tags: [Recipes]
  *     parameters:
  *       - in: path
  *         name: recipeId
  *         required: true
- *         schema:
- *           type: string
- *         description: MongoDB ObjectId của công thức.
+ *         schema: { type: string }
  *     responses:
- *       200:
- *         description: Recipe detail object
+ *       '200':
+ *         description: The requested recipe object.
  *         content:
  *           application/json:
  *             schema:
- *               allOf:
- *                 - $ref: '#/components/schemas/RecipeResponse'
- *                 - type: object
- *                   properties:
- *                     creatorId:
- *                       type: object
- *                       properties:
- *                         _id: {type: string}
- *                         userName: {type: string}
- *                         avatar: {type: string}
- *       400:
- *         description: Invalid ID format
- *       404:
- *         description: Recipe not found
- *       500:
- *         description: Internal server error
+ *               $ref: '#/components/schemas/RecipeResponse'
+ *       '404':
+ *         description: Recipe not found.
  */
 router.get('/:recipeId', recipeController.getById);
 
@@ -456,19 +452,15 @@ router.get('/:recipeId', recipeController.getById);
  * @swagger
  * /api/recipes/{recipeId}:
  *   put:
- *     summary: Update a recipe
- *     description: >
- *       Chỉ người tạo (Owner) hoặc Admin mới có quyền thực hiện.
- *       Lưu ý: Danh sách `ingredients` sẽ bị thay thế hoàn toàn bằng danh sách mới gửi lên.
+ *     summary: Update a personal recipe (Owner or Admin only)
  *     tags: [Recipes]
- *     security:
- *       - bearerAuth: []
+ *     security: [{ bearerAuth: [] }]
+ *     description: "A user can only update a recipe if they are its creator, or if they are an admin."
  *     parameters:
  *       - in: path
  *         name: recipeId
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *     requestBody:
  *       required: true
  *       content:
@@ -476,22 +468,18 @@ router.get('/:recipeId', recipeController.getById);
  *           schema:
  *             $ref: '#/components/schemas/RecipeInput'
  *     responses:
- *       200:
- *         description: Updated successfully
+ *       '200':
+ *         description: Recipe updated successfully.
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 message: {type: string}
- *                 recipe:
- *                   $ref: '#/components/schemas/RecipeResponse'
- *       403:
- *         description: Permission denied (Not owner or admin)
- *       404:
+ *               $ref: '#/components/schemas/RecipeResponse'
+ *       '401':
+ *         description: Unauthorized
+ *       '403':
+ *         description: Forbidden
+ *       '404':
  *         description: Recipe not found
- *       500:
- *         description: Internal server error
  */
 router.put('/:recipeId', authMiddleware.verifyToken, recipeController.update);
 
@@ -499,20 +487,18 @@ router.put('/:recipeId', authMiddleware.verifyToken, recipeController.update);
  * @swagger
  * /api/recipes/{recipeId}:
  *   delete:
- *     summary: Delete a recipe
- *     description: Xóa vĩnh viễn công thức. Chỉ người tạo hoặc Admin có quyền này.
+ *     summary: Delete a personal recipe (Owner or Admin only)
  *     tags: [Recipes]
- *     security:
- *       - bearerAuth: []
+ *     security: [{ bearerAuth: [] }]
+ *     description: "A user can only delete a recipe if they are its creator, or if they are an admin."
  *     parameters:
  *       - in: path
  *         name: recipeId
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: string }
  *     responses:
- *       200:
- *         description: Recipe deleted
+ *       '200':
+ *         description: Recipe deleted successfully.
  *         content:
  *           application/json:
  *             schema:
@@ -521,9 +507,11 @@ router.put('/:recipeId', authMiddleware.verifyToken, recipeController.update);
  *                 message:
  *                   type: string
  *                   example: "Recipe deleted"
- *       403:
- *         description: Permission denied
- *       404:
+ *       '401':
+ *         description: Unauthorized
+ *       '403':
+ *         description: Forbidden
+ *       '404':
  *         description: Recipe not found
  */
 router.delete('/:recipeId', authMiddleware.verifyToken, recipeController.delete);

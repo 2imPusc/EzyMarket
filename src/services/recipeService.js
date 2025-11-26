@@ -1,6 +1,7 @@
 import Recipe from '../model/recipeRepository.js';
 import Ingredient from '../model/ingredientRepository.js';
 import Unit from '../model/unitRepository.js';
+import tagService from './tagService.js';
 import mongoose from 'mongoose';
 
 const resolveIngredients = async (ingredientsInput) => {
@@ -36,11 +37,13 @@ const resolveIngredients = async (ingredientsInput) => {
 
 export const createRecipe = async (userId, data) => {
   const resolvedIngredients = await resolveIngredients(data.ingredients);
+  const tagIds = await tagService.findOrCreateTags(data.tags, userId);
   
   const newRecipe = new Recipe({
     ...data,
     creatorId: userId,
-    ingredients: resolvedIngredients
+    ingredients: resolvedIngredients,
+    tags: tagIds
   });
   
   return await newRecipe.save();
@@ -50,12 +53,15 @@ export const updateRecipe = async (recipeId, userId, data, isAdmin = false) => {
   const recipe = await Recipe.findById(recipeId);
   if (!recipe) throw new Error('Recipe not found');
   
-  // Check ownership
   if (recipe.creatorId.toString() !== userId.toString() && !isAdmin) {
     throw new Error('Permission denied');
   }
 
-  // Nếu có update ingredients, cần resolve lại
+  // Nếu client gửi lên một mảng tags mới
+  if (data.tags) {
+    data.tags = await tagService.findOrCreateTags(data.tags, userId);
+  }
+
   if (data.ingredients) {
     data.ingredients = await resolveIngredients(data.ingredients);
   }
@@ -94,17 +100,28 @@ export const getRecipeById = async (recipeId) => {
 export const searchRecipes = async ({ q, tag, page = 1, limit = 20 }) => {
   const skip = (Math.max(parseInt(page), 1) - 1) * parseInt(limit);
   const lim = parseInt(limit);
-  
   const filter = {};
-  if (tag) filter.tags = tag;
-  if (q) filter.$text = { $search: q };
 
-  // Sorting: Nếu search text thì sort theo độ khớp (score), nếu không thì sort mới nhất
+  if (tag) {
+    const tagDoc = await tagService.findByName(tag);
+    if (tagDoc) {
+      filter.tags = tagDoc._id;
+    } else {
+      return { recipes: [], total: 0, page: parseInt(page), limit: lim, totalPages: 0 };
+    }
+  }
+
+  // Chỉ cần một điều kiện: nếu có 'q', thì dùng $text search.
+  if (q) {
+    filter.$text = { $search: q };
+  }
+
+  // Luôn sắp xếp theo độ liên quan nếu có tìm kiếm, nếu không thì theo ngày tạo.
   const sort = q ? { score: { $meta: 'textScore' } } : { createdAt: -1 };
   const projection = q ? { score: { $meta: 'textScore' } } : {};
-
+  
   const [recipes, total] = await Promise.all([
-    Recipe.find(filter, projection).select('-__v').sort(sort).skip(skip).limit(lim).lean(),
+    Recipe.find(filter, projection).sort(sort).skip(skip).limit(lim).lean(),
     Recipe.countDocuments(filter),
   ]);
 
@@ -122,6 +139,31 @@ export const getMyRecipes = async (userId, { q, page = 1, limit = 20 }) => {
   ]);
 
   return { recipes, total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) };
+};
+
+export const getSystemRecipes = async ({ q, tag, page = 1, limit = 20 }) => {
+  const skip = (Math.max(parseInt(page), 1) - 1) * parseInt(limit);
+  const lim = parseInt(limit);
+  
+  const filter = { creatorId: null }; // <-- Mấu chốt là ở đây
+  if (tag) {
+    // Cần tìm tagId trước
+    const tagDoc = await tagService.findByName(tag);
+    if (tagDoc && tagDoc.creatorId === null) { // Đảm bảo đó là tag hệ thống
+        filter.tags = tagDoc._id;
+    } else {
+        // Nếu tag không tồn tại trong hệ thống, trả về rỗng
+        return { recipes: [], total: 0, page: parseInt(page), limit: lim, totalPages: 0 };
+    }
+  }
+  if (q) filter.$text = { $search: q };
+
+  const [recipes, total] = await Promise.all([
+    Recipe.find(filter).sort({ createdAt: -1 }).skip(skip).limit(lim).lean(),
+    Recipe.countDocuments(filter),
+  ]);
+
+  return { recipes, total, page: parseInt(page), limit: lim, totalPages: Math.ceil(total / lim) };
 };
 
 /**

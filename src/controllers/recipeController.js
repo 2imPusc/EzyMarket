@@ -114,14 +114,29 @@ const getMyRecipes = async (req, res) => {
   }
 };
 
-const suggestions = async (req, res) => {
+const getSystem = async (req, res) => {
   try {
-    const { availableIngredients, threshold, limit } = req.body;
-    if (!Array.isArray(availableIngredients)) {
-      return res.status(400).json({ message: 'availableIngredients must be an array' });
-    }
-    const result = await recipeService.suggestRecipes(availableIngredients, { threshold, limit });
-    res.json({ suggestions: result });
+    const result = await recipeService.getSystemRecipes(req.query);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getSuggestions = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.json([]);
+
+    // Logic giống hệt ingredient suggestions: tìm các tiêu đề BẮT ĐẦU BẰNG query
+    const regex = new RegExp('^' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
+    const recipes = await Recipe.find({ title: regex })
+      .select('_id title imageUrl') // Chỉ lấy dữ liệu cần thiết
+      .limit(10)
+      .sort({ title: 1 });
+
+    res.json(recipes);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -181,7 +196,8 @@ export default {
   getById,
   search,
   getMyRecipes,
-  suggestions,
+  getSystem,
+  getSuggestions,
   shoppingListFromRecipe,
   masterDataIngredients,
   getTags
