@@ -129,6 +129,24 @@ export const updateItem = async (userId, itemId, updateData) => {
   }
   const itemObjectId = new mongoose.Types.ObjectId(itemId);
 
+  // Nếu yêu cầu cập nhật unitId, phải kiểm tra xem item đó có phải là Ingredient không
+  if (updateData.unitId) {
+    const plan = await MealPlan.findOne({ userId, "meals.items._id": itemObjectId });
+    
+    if (plan) {
+      // Tìm item cụ thể trong mảng nested để check type
+      let targetItem = null;
+      for (const meal of plan.meals) {
+        targetItem = meal.items.find(item => item._id.equals(itemObjectId));
+        if (targetItem) break;
+      }
+
+      if (targetItem && targetItem.itemType === 'recipe') {
+        throw new Error('Cannot update unitId for a recipe item');
+      }
+    }
+  }
+
   // 2. Tạo dynamic set data (LƯU Ý: Dùng quantity thay vì servings)
   const setData = {};
   
