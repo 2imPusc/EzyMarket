@@ -35,6 +35,55 @@ const addItem = async (req, res) => {
   }
 };
 
+// Helper để parse fridgeIds từ query string
+const parseFridgeIds = (queryParam) => {
+  if (!queryParam) return null;
+  // Nếu là mảng (gửi dạng ?fridgeIds=1&fridgeIds=2) thì giữ nguyên
+  if (Array.isArray(queryParam)) return queryParam;
+  // Nếu là string (gửi dạng ?fridgeIds=1,2) thì split
+  return queryParam.split(',').map(id => id.trim());
+};
+
+// GET /api/meal-plans/recipes/search
+const searchRecipes = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    const { q, page, limit, fridgeIds } = req.query; // Lấy thêm fridgeIds
+
+    const targetFridgeIds = parseFridgeIds(fridgeIds);
+
+    const results = await mealPlanService.searchRecipesForPlan(
+      userId, 
+      q || '', 
+      targetFridgeIds, // Truyền vào service
+      parseInt(page) || 1, 
+      parseInt(limit) || 20
+    );
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// GET /api/meal-plans/recipes/recommendations
+const getRecommendations = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    const { limit, fridgeIds } = req.query; // Lấy thêm fridgeIds
+
+    const targetFridgeIds = parseFridgeIds(fridgeIds);
+
+    const results = await mealPlanService.getRecommendationsForPlan(
+      userId, 
+      targetFridgeIds, // Truyền vào service
+      parseInt(limit) || 10
+    );
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // PATCH /api/meal-plans/items/:itemId
 const updateItem = async (req, res) => {
   try {
@@ -79,6 +128,8 @@ const removeItem = async (req, res) => {
 export default {
   getPlan,
   addItem,
+  searchRecipes,
+  getRecommendations,
   updateItem,
   removeItem
 };

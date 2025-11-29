@@ -160,6 +160,44 @@ router.post('/items', mealPlanController.addItem);
 
 /**
  * @swagger
+ * /api/meal-plans/recipes/search:
+ *   get:
+ *     summary: Search recipes with inventory availability
+ *     tags: [MealPlans]
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema: { type: string }
+ *         description: Keyword to search
+ *       - in: query
+ *         name: fridgeIds
+ *         schema: { type: string }
+ *         description: "Optional. Comma-separated list of fridge IDs to check inventory (e.g., 'id1,id2'). If omitted, checks all user fridges."
+ *     responses:
+ *       200:
+ *         description: List of recipes with availability status.
+ */
+router.get('/recipes/search', mealPlanController.searchRecipes);
+
+/**
+ * @swagger
+ * /api/meal-plans/recipes/recommendations:
+ *   get:
+ *     summary: Get recipe recommendations based on fridge
+ *     tags: [MealPlans]
+ *     parameters:
+ *       - in: query
+ *         name: fridgeIds
+ *         schema: { type: string }
+ *         description: "Optional. Comma-separated list of fridge IDs. If omitted, checks all user fridges."
+ *     responses:
+ *       200:
+ *         description: List of recommended recipes.
+ */
+router.get('/recipes/recommendations', mealPlanController.getRecommendations);
+
+/**
+ * @swagger
  * /api/meal-plans/items/{itemId}:
  *   patch:
  *     summary: Update a meal item (Quantity, Check status)
