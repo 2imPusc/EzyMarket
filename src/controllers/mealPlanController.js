@@ -35,6 +35,28 @@ const addItem = async (req, res) => {
   }
 };
 
+// POST /api/meal-plans/items/bulk
+const addItemsBulk = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    // items là một mảng []
+    const { date, mealType, items } = req.body;
+
+    if (!date || !mealType || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Date, mealType, and a list of items are required' });
+    }
+
+    const addedItems = await mealPlanService.addItemsToMealBulk(userId, req.body);
+    
+    res.status(201).json({ 
+      message: `${addedItems.length} items added successfully`, 
+      items: addedItems 
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // Helper để parse fridgeIds từ query string
 const parseFridgeIds = (queryParam) => {
   if (!queryParam) return null;
@@ -128,6 +150,7 @@ const removeItem = async (req, res) => {
 export default {
   getPlan,
   addItem,
+  addItemsBulk,
   searchRecipes,
   getRecommendations,
   updateItem,

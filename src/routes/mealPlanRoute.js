@@ -22,38 +22,40 @@ router.use(authMiddleware.verifyToken);
  * @swagger
  * components:
  *   schemas:
- *     MealItemInput:
+ *     # 1. Schema chi tiết món ăn (Dùng chung cho cả lẻ và sỉ)
+ *     MealItemDetail:
  *       type: object
  *       required:
- *         - date
- *         - mealType
  *         - itemType
  *         - quantity
  *       properties:
- *         date:
- *           type: string
- *           format: date
- *           example: "2023-10-25"
- *         mealType:
- *           type: string
- *           enum: [breakfast, lunch, dinner, snack]
  *         itemType:
  *           type: string
  *           enum: [recipe, ingredient]
- *           description: "Specify if you are adding a full Recipe or a single Ingredient."
  *         quantity:
  *           type: number
  *           default: 1
- *           description: "Number of servings (for Recipe) or amount (for Ingredient)."
  *         recipeId:
  *           type: string
- *           description: "Required if itemType is 'recipe'."
  *         ingredientId:
  *           type: string
- *           description: "Required if itemType is 'ingredient'."
  *         unitId:
  *           type: string
- *           description: "Required if itemType is 'ingredient'. The unit for the quantity (e.g., grams, pieces)."
+ *
+ *     # 2. Input cho API thêm lẻ (POST /items) -> Kế thừa MealItemDetail + Date/MealType
+ *     MealItemInput:
+ *       allOf:
+ *         - $ref: '#/components/schemas/MealItemDetail'
+ *         - type: object
+ *           required: [date, mealType]
+ *           properties:
+ *             date:
+ *               type: string
+ *               format: date
+ *               example: "2025-10-23"
+ *             mealType:
+ *               type: string
+ *               enum: [breakfast, lunch, dinner, snack]
  *
  *     MealItemUpdateInput:
  *       type: object
@@ -157,6 +159,39 @@ router.get('/', mealPlanController.getPlan);
  *         description: Item added successfully.
  */
 router.post('/items', mealPlanController.addItem);
+
+/**
+ * @swagger
+ * /api/meal-plans/items/bulk:
+ *   post:
+ *     summary: Bulk add items to a meal
+ *     tags: [MealPlans]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [date, mealType, items]
+ *             properties:
+ *               date:
+ *                 type: string
+ *                 format: date
+ *                 example: "2025-10-23"
+ *               mealType:
+ *                 type: string
+ *                 enum: [breakfast, lunch, dinner, snack]
+ *               items:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/MealItemDetail' # <--- SỬA TẠI ĐÂY
+ *     responses:
+ *       201:
+ *         description: Items added successfully.
+ */
+router.post('/items/bulk', mealPlanController.addItemsBulk);
 
 /**
  * @swagger

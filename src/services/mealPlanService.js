@@ -67,6 +67,61 @@ export const addItemToMeal = async (userId, data) => {
   return plan.meals[mealIndex].items[plan.meals[mealIndex].items.length - 1];
 };
 
+export const addItemsToMealBulk = async (userId, { date, mealType, items }) => {
+  const targetDate = normalizeDate(date);
+
+  // 1. Tìm hoặc tạo mới Document cho ngày đó
+  let plan = await MealPlan.findOne({ userId, date: targetDate });
+
+  if (!plan) {
+    plan = new MealPlan({ userId, date: targetDate });
+    // Lưu lần đầu để hook pre-save chạy và tạo ra cấu trúc 4 bữa ăn (breakfast, lunch...)
+    await plan.save();
+  }
+
+  // 2. Tìm đúng mealType
+  const mealIndex = plan.meals.findIndex(m => m.mealType === mealType);
+  if (mealIndex === -1) {
+    throw new Error('Invalid meal type');
+  }
+
+  // 3. Chuẩn bị danh sách item để push
+  const validItems = items.map(item => {
+    const { itemType, recipeId, ingredientId, unitId, quantity } = item;
+    
+    const newItem = {
+      itemType,
+      quantity: quantity || 1,
+      isEaten: false
+    };
+
+    // Validate từng item
+    if (itemType === 'recipe') {
+      if (!recipeId) throw new Error('Recipe ID required for recipe item');
+      newItem.recipeId = recipeId;
+    } else if (itemType === 'ingredient') {
+      if (!ingredientId || !unitId) throw new Error('Ingredient ID and Unit ID required for ingredient item');
+      newItem.ingredientId = ingredientId;
+      newItem.unitId = unitId;
+    } else {
+      throw new Error('Invalid item type');
+    }
+
+    return newItem;
+  });
+
+  // 4. Push toàn bộ vào mảng items của bữa ăn đó
+  plan.meals[mealIndex].items.push(...validItems);
+  
+  // 5. Save một lần duy nhất (Atomic Operation)
+  await plan.save();
+
+  // Trả về danh sách các item vừa thêm (để frontend update UI nếu cần)
+  // Lấy N phần tử cuối cùng của mảng
+  const addedItems = plan.meals[mealIndex].items.slice(-validItems.length);
+  return addedItems;
+};
+
 export const updateItem = async (userId, itemId, updateData) => {
   // 1. Ép kiểu ObjectId cho itemId
   if (!mongoose.Types.ObjectId.isValid(itemId)) {
