@@ -3,6 +3,8 @@ import MealPlan from '../model/mealPlanRepository.js';
 import Recipe from '../model/recipeRepository.js';
 import Ingredient from '../model/ingredientRepository.js';
 import Unit from '../model/unitRepository.js';
+import fridgeService from './fridgeService.js';
+import fridgeItemService from './fridgeItemService.js';
 
 const shoppingService = {
   createShoppingList: async (
@@ -120,7 +122,47 @@ const shoppingService = {
   },
 
   updateShoppingList: async (id, updateData) => {
-    return await ShoppingList.findByIdAndUpdate(id, updateData, { new: true });
+    const list = await ShoppingList.findByIdAndUpdate(id, updateData, { new: true });
+
+    if (list && list.status === 'completed' && updateData.status === 'completed') {
+      try {
+        let fridge = await fridgeService.getGroupFridge(list.groupId);
+
+        // If no fridge exists for this group, create one
+        if (!fridge) {
+          fridge = await fridgeService.createFridge(list.creatorId, {
+            name: `${list.title} Fridge`,
+            groupId: list.groupId,
+          });
+        }
+
+        // 2. Iterate through purchased items
+        for (const item of list.items) {
+          if (item.isPurchased) {
+            let unitId = null;
+            if (item.unit) {
+              const unitObj = await Unit.findOne({
+                $or: [{ name: item.unit }, { abbreviation: item.unit }],
+              });
+              if (unitObj) unitId = unitObj._id;
+            }
+
+            if (item.ingredientId && unitId) {
+              await fridgeItemService.addFridgeItem(fridge._id, {
+                foodId: item.ingredientId,
+                unitId: unitId,
+                quantity: item.quantity,
+                purchaseDate: new Date(),
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error moving items to fridge:', error);
+      }
+    }
+
+    return list;
   },
 
   deleteShoppingList: async (id) => {

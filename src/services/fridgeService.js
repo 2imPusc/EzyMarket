@@ -19,13 +19,29 @@ const fridgeService = {
   },
 
   /**
-   * Lấy tất cả tủ lạnh thuộc về một người dùng.
+   * Lấy tất cả tủ lạnh thuộc về một người dùng (bao gồm tủ cá nhân và tủ nhóm).
    * @param {string} userId - ID của người dùng.
+   * @param {Array<string>} groupIds - Danh sách ID nhóm của người dùng.
    * @returns {Promise<Array<Document>>} - Mảng các tài liệu Fridge.
    */
-  getUserFridges: async (userId) => {
-    const fridges = await Fridge.find({ owner: userId }).sort({ createdAt: -1 });
+  getUserFridges: async (userId, groupIds = []) => {
+    const query = {
+      $or: [
+        { owner: userId, groupId: null }, // Tủ cá nhân
+        { groupId: { $in: groupIds } }    // Tủ nhóm
+      ]
+    };
+    const fridges = await Fridge.find(query).sort({ createdAt: -1 });
     return fridges;
+  },
+
+  /**
+   * Lấy tủ lạnh của một nhóm cụ thể.
+   * @param {string} groupId - ID của nhóm.
+   * @returns {Promise<Document>} - Tài liệu Fridge.
+   */
+  getGroupFridge: async (groupId) => {
+    return await Fridge.findOne({ groupId });
   },
 
   /**
