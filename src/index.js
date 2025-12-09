@@ -25,7 +25,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use('/api/user', authRoutes);
-app.use('/api/group', groupRoutes);
+app.use('/api/groups', groupRoutes);
 app.use('/api/ingredients', ingredientRoutes);
 app.use('/api/units', unitRoutes);
 app.use('/api/fridge-items', fridgeItemRoutes);

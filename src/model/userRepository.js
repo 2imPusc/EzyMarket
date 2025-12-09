@@ -6,7 +6,10 @@ const userSchema = new mongoose.Schema({
   emailVerified: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   email: { type: String, required: true, unique: true },
-  groupIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Group' }],
+
+  // CHANGED: mỗi user chỉ có 1 group (nullable)
+  groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null, index: true },
+
   password: { type: String, required: true, minlength: 6 },
   phone: { type: String },
   role: { type: String, enum: ['admin', 'user'], default: 'user' },
