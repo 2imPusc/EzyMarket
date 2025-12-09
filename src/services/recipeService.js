@@ -1,10 +1,9 @@
+import mongoose from 'mongoose';
 import Recipe from '../model/recipeRepository.js';
+import FridgeItem from '../model/fridgeItemRepository.js';
 import Ingredient from '../model/ingredientRepository.js';
 import Unit from '../model/unitRepository.js';
-import Fridge from '../model/fridgeRepository.js';
-import FridgeItem from '../model/fridgeItemRepository.js';
 import tagService from './tagService.js';
-import mongoose from 'mongoose';
 
 /**
  * Xác thực và giải quyết (validate and resolve) một mảng các nguyên liệu đầu vào.
@@ -286,60 +285,51 @@ export const suggestRecipes = async (availableNames = [], { threshold = 0.6, lim
 };
 
 /**
- * Tính toán Shopping List dựa trên thực phẩm có trong tủ lạnh
+ * Tính toán Shopping List dựa trên thực phẩm có trong "fridge-items" của user hoặc group
  * @param {string} recipeId
  * @param {string} userId
- * @param {string} [specificFridgeId] - Nếu muốn chỉ định lấy từ 1 tủ lạnh cụ thể
+ * @param {string} [groupId] - Nếu user thuộc group, truyền groupId để quét items của group thay vì user
  */
-export const buildShoppingListFromFridge = async (recipeId, userId, specificFridgeId = null) => {
+export const buildShoppingListFromFridge = async (recipeId, userId, groupId = null) => {
+  // Validate recipeId presence and format
+  if (!recipeId) {
+    const err = new Error('recipeId is required');
+    err.status = 400;
+    throw err;
+  }
+  if (!mongoose.isValidObjectId(recipeId)) {
+    const err = new Error('Invalid recipeId format');
+    err.status = 400;
+    throw err;
+  }
+
   // 1. Lấy thông tin Recipe
   const recipe = await Recipe.findById(recipeId).lean();
-  if (!recipe) throw new Error('Recipe not found');
-
-  // 2. Xác định danh sách tủ lạnh cần quét
-  let fridgeIds = [];
-  if (specificFridgeId) {
-    fridgeIds = [specificFridgeId];
-  } else {
-    const fridges = await Fridge.find({ owner: userId }).select('_id');
-    fridgeIds = fridges.map(f => f._id);
+  if (!recipe) {
+    const err = new Error('Recipe not found');
+    err.status = 404;
+    throw err;
   }
 
-  // Nếu không có tủ lạnh, toàn bộ nguyên liệu là thiếu
-  if (fridgeIds.length === 0) {
-    return {
-      recipeId: recipe._id,
-      title: recipe.title,
-      missing: recipe.ingredients.map(mapIngredientToMissing)
-    };
-  }
+  // 2. Lấy tất cả item còn hạn (in-stock) cho owner tương ứng
+  const query = { status: 'in-stock' };
+  if (groupId) query.groupId = groupId;
+  else query.userId = userId;
 
-  // 3. Lấy tất cả item còn hạn (in-stock) trong tủ lạnh
-  const fridgeItems = await FridgeItem.find({
-    fridgeId: { $in: fridgeIds },
-    status: 'in-stock'
-  }).lean();
+  const fridgeItems = await FridgeItem.find(query).lean();
 
-  // 4. TẠO KHO HÀNG (INVENTORY MAP) DỰA TRÊN ID
-  // Key = "ingredientId_unitId"
-  // Value = Tổng số lượng
+  // 3. TẠO KHO HÀNG (INVENTORY MAP) DỰA TRÊN ID
   const inventoryMap = {};
-
-  // Map phụ để kiểm tra Unit Mismatch (Cùng Ingredient nhưng khác Unit)
-  // Key = "ingredientId" -> Value = Array of unitIds đang có
   const existingIngredientsMap = {};
 
   for (const item of fridgeItems) {
-    // Chỉ xử lý nếu item trong tủ lạnh có liên kết Ingredient và Unit hợp lệ
     if (item.foodId && item.unitId) {
       const ingIdStr = item.foodId.toString();
       const unitIdStr = item.unitId.toString();
 
-      // 4.1. Cộng dồn số lượng cho Key chính xác (Ing + Unit)
       const exactKey = `${ingIdStr}_${unitIdStr}`;
       inventoryMap[exactKey] = (inventoryMap[exactKey] || 0) + item.quantity;
 
-      // 4.2. Lưu lại để check mismatch sau này
       if (!existingIngredientsMap[ingIdStr]) {
         existingIngredientsMap[ingIdStr] = new Set();
       }
@@ -351,49 +341,36 @@ export const buildShoppingListFromFridge = async (recipeId, userId, specificFrid
   const missing = [];
 
   for (const recipeIng of recipe.ingredients) {
-    // Trường hợp 1: Recipe Item là text nhập tay (không có ingredientId) -> Luôn thiếu
     if (!recipeIng.ingredientId) {
       missing.push(mapIngredientToMissing(recipeIng));
       continue;
     }
 
     const ingIdStr = recipeIng.ingredientId.toString();
-    // Nếu recipe không chọn unit (trường hợp hiếm), coi như unitId là 'null'
     const unitIdStr = recipeIng.unitId ? recipeIng.unitId.toString() : 'null';
     const requiredQty = recipeIng.quantity;
-
-    // Tạo key để tra cứu trong kho
     const lookupKey = `${ingIdStr}_${unitIdStr}`;
     const availableQty = inventoryMap[lookupKey] || 0;
 
-    // Logic trừ kho
     if (availableQty >= requiredQty) {
-      // Đủ hàng -> Bỏ qua, không thêm vào list thiếu
-      continue; 
+      continue;
     } else {
-      // Thiếu hàng (hoặc chỉ có một phần) -> Tính phần còn thiếu
-      const missingQty = requiredQty - availableQty;
-
-      // Logic check Unit Mismatch:
-      // Kiểm tra xem user có Ingredient này không, nhưng ở Unit khác
       let inventoryNote = null;
       if (existingIngredientsMap[ingIdStr]) {
-         // Nếu trong Set các unit đang có của ingredient này KHÔNG chứa unitIdStr cần tìm
-         // tức là user có hàng, nhưng lệch đơn vị tính.
-         if (!existingIngredientsMap[ingIdStr].has(unitIdStr) && existingIngredientsMap[ingIdStr].size > 0) {
-             inventoryNote = "Có sẵn trong tủ lạnh nhưng khác đơn vị tính. Hãy kiểm tra lại.";
-         }
+        if (!existingIngredientsMap[ingIdStr].has(unitIdStr) && existingIngredientsMap[ingIdStr].size > 0) {
+          inventoryNote = "Có sẵn trong fridge-items nhưng khác đơn vị tính. Hãy kiểm tra lại.";
+        }
       }
 
       missing.push({
-        name: recipeIng.name,         // Tên hiển thị từ Recipe
-        quantity: missingQty,         // Số lượng CẦN MUA THÊM
+        name: recipeIng.name,
+        quantity: requiredQty - availableQty,
         unitId: recipeIng.unitId,
         unitText: recipeIng.unitText,
         note: recipeIng.note,
         optional: recipeIng.optional,
-        haveQuantity: availableQty,   // Số lượng đang có (cùng đơn vị)
-        inventoryNote: inventoryNote  // Cảnh báo khác đơn vị
+        haveQuantity: availableQty,
+        inventoryNote
       });
     }
   }
@@ -421,4 +398,110 @@ export const suggestIngredientNames = async (prefix = '', limit = 10) => {
   if (!prefix) return await Ingredient.find().select('name').limit(limit).lean();
   const regex = new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
   return await Ingredient.find({ name: regex }).select('name').limit(limit).lean();
+};
+
+/**
+ * Helper: Tính toán độ sẵn sàng của nguyên liệu cho danh sách Recipes
+ * Bây giờ query trực tiếp vào FridgeItem bằng owner (userId hoặc groupId)
+ */
+const enrichRecipesWithInventory = async (recipes, userId, groupId = null, targetOwnerIds = null) => {
+  // Nếu truyền targetOwnerIds (mảng groupId/userId) thì sử dụng nó, ưu tiên hơn groupId/userId
+  const query = { status: 'in-stock' };
+
+  if (Array.isArray(targetOwnerIds) && targetOwnerIds.length > 0) {
+    // targetOwnerIds được hiểu là một list owner ids (có thể là group ids hoặc user ids tuỳ ngữ cảnh)
+    query.$or = [
+      { userId: { $in: targetOwnerIds } },
+      { groupId: { $in: targetOwnerIds } }
+    ];
+  } else if (groupId) {
+    query.groupId = groupId;
+  } else {
+    query.userId = userId;
+  }
+
+  const fridgeItems = await FridgeItem.find(query).lean();
+
+  const inventoryMap = {};
+  for (const item of fridgeItems) {
+    if (item.foodId && item.unitId) {
+      const key = `${item.foodId.toString()}_${item.unitId.toString()}`;
+      inventoryMap[key] = (inventoryMap[key] || 0) + item.quantity;
+    }
+  }
+
+  return recipes.map(recipe => {
+    let missingCount = 0;
+
+    const enrichedIngredients = recipe.ingredients.map(ing => {
+      if (!ing.ingredientId) return { ...ing, available: 0, isEnough: false };
+
+      const ingId = ing.ingredientId.toString();
+      const unitId = ing.unitId ? ing.unitId.toString() : 'null';
+      const key = `${ingId}_${unitId}`;
+
+      const available = inventoryMap[key] || 0;
+      const isEnough = available >= ing.quantity;
+
+      if (!isEnough && !ing.optional) missingCount++;
+
+      return {
+        ...ing,
+        availableQuantity: available,
+        isEnough
+      };
+    });
+
+    return {
+      _id: recipe._id,
+      title: recipe.title,
+      imageUrl: recipe.imageUrl,
+      cookTime: recipe.cookTime,
+      prepTime: recipe.prepTime,
+      ingredients: enrichedIngredients,
+      missingIngredientsCount: missingCount,
+      canCook: missingCount === 0
+    };
+  });
+};
+
+/**
+ * searchRecipesForPlan: truyền groupId nếu cần (nếu user có group)
+ */
+export const searchRecipesForPlan = async (userId, query, groupId = null, page = 1, limit = 20) => {
+  const skip = (page - 1) * limit;
+  const filter = {};
+  if (query) filter.$text = { $search: query };
+
+  const recipes = await Recipe.find(filter)
+    .sort({ score: { $meta: 'textScore' } })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  return await enrichRecipesWithInventory(recipes, userId, groupId);
+};
+
+/**
+ * getRecommendationsForPlan: dùng fridge-items của user hoặc group (nếu groupId truyền vào)
+ */
+export const getRecommendationsForPlan = async (userId, groupId = null, limit = 10) => {
+  const query = { status: 'in-stock' };
+  if (groupId) query.groupId = groupId;
+  else query.userId = userId;
+
+  const fridgeItems = await FridgeItem.find(query)
+    .populate('foodId', 'name')
+    .lean();
+
+  const ingredientNames = fridgeItems.map(item => item.foodId?.name).filter(Boolean);
+  if (ingredientNames.length === 0) return [];
+
+  const recipes = await Recipe.find({
+    'ingredients.name': { $in: ingredientNames.map(n => new RegExp(`^${n}`, 'i')) }
+  })
+  .limit(limit)
+  .lean();
+
+  return await enrichRecipesWithInventory(recipes, userId, groupId);
 };

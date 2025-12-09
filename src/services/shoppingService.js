@@ -3,7 +3,6 @@ import MealPlan from '../model/mealPlanRepository.js';
 import Recipe from '../model/recipeRepository.js';
 import Ingredient from '../model/ingredientRepository.js';
 import Unit from '../model/unitRepository.js';
-import fridgeService from './fridgeService.js';
 import fridgeItemService from './fridgeItemService.js';
 
 const shoppingService = {
@@ -126,17 +125,11 @@ const shoppingService = {
 
     if (list && list.status === 'completed' && updateData.status === 'completed') {
       try {
-        let fridge = await fridgeService.getGroupFridge(list.groupId);
+        // Khi shopping list được hoàn tất, chuyển các item đã mua vào fridge-items.
+        // Owner: nếu list.groupId tồn tại -> group, ngược lại assign về creatorId (user).
+        const ownerGroupId = list.groupId ?? null;
+        const ownerUserId = ownerGroupId ? null : list.creatorId;
 
-        // If no fridge exists for this group, create one
-        if (!fridge) {
-          fridge = await fridgeService.createFridge(list.creatorId, {
-            name: `${list.title} Fridge`,
-            groupId: list.groupId,
-          });
-        }
-
-        // 2. Iterate through purchased items
         for (const item of list.items) {
           if (item.isPurchased) {
             let unitId = null;
@@ -148,17 +141,21 @@ const shoppingService = {
             }
 
             if (item.ingredientId && unitId) {
-              await fridgeItemService.addFridgeItem(fridge._id, {
+              // Gọi trực tiếp fridgeItemService với payload owner (groupId hoặc userId)
+              const payload = {
                 foodId: item.ingredientId,
                 unitId: unitId,
                 quantity: item.quantity,
                 purchaseDate: new Date(),
-              });
+                groupId: ownerGroupId ?? null,
+                userId: ownerUserId ?? null,
+              };
+              await fridgeItemService.addFridgeItem(payload);
             }
           }
         }
       } catch (error) {
-        console.error('Error moving items to fridge:', error);
+        console.error('Error moving items to fridge-items:', error);
       }
     }
 

@@ -2,18 +2,28 @@ import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 const fridgeItemSchema = new Schema({
-  fridgeId: { // ID của tủ lạnh mà item này thuộc về
+  // owner: có thể là user hoặc group (ít nhất 1 trong 2 phải có)
+  userId: {
     type: Schema.Types.ObjectId,
-    ref: 'Fridge', // Giả định bạn có một model 'Fridge'
-    required: true,
+    ref: 'User',
     index: true,
+    default: null,
   },
-  foodId: { // Liên kết đến model Ingredient
+  groupId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Group',
+    index: true,
+    default: null,
+  },
+
+  // Liên kết đến model Ingredient
+  foodId: {
     type: Schema.Types.ObjectId,
     ref: 'Ingredient',
     required: true,
   },
-  unitId: { // Liên kết đến model Unit
+  // Liên kết đến model Unit
+  unitId: {
     type: Schema.Types.ObjectId,
     ref: 'Unit',
     required: true,
@@ -30,7 +40,7 @@ const fridgeItemSchema = new Schema({
   expiryDate: {
     type: Date,
     required: true,
-    index: true, // Index để query nhanh khi check hạn sử dụng
+    index: true,
   },
   price: {
     type: Number,
@@ -42,12 +52,47 @@ const fridgeItemSchema = new Schema({
     enum: ['in-stock', 'used', 'expired', 'discarded'],
     default: 'in-stock',
   },
-  addedAt: { // Ghi lại thời điểm thêm vào DB, khác với purchaseDate
+  addedAt: {
     type: Date,
     default: Date.now,
   },
 }, {
-  timestamps: true, // Tự động quản lý createdAt và updatedAt
+  timestamps: true,
 });
+
+// Validator: bắt buộc có ít nhất userId hoặc groupId
+fridgeItemSchema.pre('validate', function(next) {
+  if (!this.userId && !this.groupId) {
+    return next(new Error('Either userId or groupId is required for a fridge item'));
+  }
+  next();
+});
+
+// Static helpers thuận tiện cho service layer
+fridgeItemSchema.statics.createItem = function(data) {
+  return this.create(data);
+};
+
+fridgeItemSchema.statics.findByOwner = function({ userId = null, groupId = null }, options = {}) {
+  const query = groupId ? { groupId } : { userId };
+  const q = this.find(query);
+  if (options.populate) q.populate(options.populate);
+  if (options.sort) q.sort(options.sort);
+  if (options.limit) q.limit(Number(options.limit));
+  if (options.skip) q.skip(Number(options.skip));
+  return q.exec();
+};
+
+fridgeItemSchema.statics.findByIdItem = function(id) {
+  return this.findById(id).exec();
+};
+
+fridgeItemSchema.statics.updateItem = function(id, update) {
+  return this.findByIdAndUpdate(id, update, { new: true }).exec();
+};
+
+fridgeItemSchema.statics.deleteItem = function(id) {
+  return this.findByIdAndDelete(id).exec();
+};
 
 export default mongoose.model('FridgeItem', fridgeItemSchema);

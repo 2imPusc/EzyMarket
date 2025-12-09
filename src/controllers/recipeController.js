@@ -166,22 +166,20 @@ const getSuggestions = async (req, res) => {
  * Input: { recipeId, fridgeId (optional) }
  * Output: Danh sách các món còn thiếu kèm số lượng cụ thể
  */
-const shoppingListFromRecipe = async (req, res) => {
+export const shoppingListFromRecipe = async (req, res) => {
   try {
-    const { recipeId, fridgeId } = req.body;
-    const userId = req.user.id || req.user._id;
+    const { recipeId, groupId } = req.body; // hoặc req.query tùy route
+    const user = req.user;
+    const userId = user && (user.id ?? user._id);
 
-    if (!recipeId) {
-      return res.status(400).json({ message: 'recipeId is required' });
-    }
+    if (!recipeId) return res.status(400).json({ message: 'recipeId is required' });
 
-    // Gọi service với userId để tự động tìm trong tủ lạnh
-    const result = await recipeService.buildShoppingListFromFridge(recipeId, userId, fridgeId);
-    
-    res.json(result);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
+    const result = await recipeService.buildShoppingListFromFridge(recipeId, userId, groupId ?? null);
+    return res.status(200).json(result);
+  } catch (err) {
+    // Nếu service gắn err.status thì dùng, ngược lại 500
+    const status = err && err.status ? err.status : 500;
+    return res.status(status).json({ message: err.message || 'Internal server error' });
   }
 };
 

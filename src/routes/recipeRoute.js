@@ -333,7 +333,7 @@ router.get('/suggestions', recipeController.getSuggestions);
  *     tags: [Recipes &  Recipe-tags]
  *     security:
  *       - bearerAuth: []
- *     description: Calculates missing ingredients by comparing the recipe with the user's current fridge items (in-stock).
+ *     description: Calculates missing ingredients by comparing the recipe with the authenticated user's current fridge-items (in-stock).
  *     requestBody:
  *       required: true
  *       content:
@@ -344,9 +344,9 @@ router.get('/suggestions', recipeController.getSuggestions);
  *             properties:
  *               recipeId:
  *                 type: string
- *               fridgeId:
+ *               groupId:
  *                 type: string
- *                 description: Optional. Check a specific fridge only. If omitted, checks all user's fridges.
+ *                 description: Optional. If provided, check the group's fridge-items. If omitted, the API checks the authenticated user's fridge-items.
  *     responses:
  *       200:
  *         description: List of items to buy
@@ -376,7 +376,7 @@ router.get('/suggestions', recipeController.getSuggestions);
  *                         description: Warning if item exists but in different unit.
  *                       haveQuantity:
  *                         type: number
- *                         description: Amount currently available in fridge (matching unit).
+ *                         description: Amount currently available in fridge-items (matching unit).
  *       400:
  *         description: Bad request (Missing ID)
  *       500:

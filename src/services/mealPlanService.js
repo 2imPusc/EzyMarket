@@ -1,9 +1,7 @@
 import MealPlan from '../model/mealPlanRepository.js';
 import Recipe from '../model/recipeRepository.js';
-import Fridge from '../model/fridgeRepository.js';
 import FridgeItem from '../model/fridgeItemRepository.js';
 import mongoose from 'mongoose';
-// import Recipe & Ingredient models nếu cần validate kỹ hơn
 
 const normalizeDate = (dateString) => {
   const d = new Date(dateString);
@@ -192,26 +190,24 @@ export const removeItem = async (userId, itemId) => {
 
 /**
  * Helper: Tính toán độ sẵn sàng của nguyên liệu cho danh sách Recipes
+ * Bây giờ query trực tiếp vào FridgeItem bằng owner (userId hoặc groupId)
  */
-const enrichRecipesWithInventory = async (recipes, userId, targetFridgeIds = null) => {
-  // Tạo query tìm tủ lạnh: Luôn phải thuộc về user
-  const fridgeQuery = { owner: userId };
-  
-  // Nếu có danh sách ID cụ thể thì lọc thêm
-  if (targetFridgeIds && targetFridgeIds.length > 0) {
-    fridgeQuery._id = { $in: targetFridgeIds };
+const enrichRecipesWithInventory = async (recipes, userId, groupId = null, targetOwnerIds = null) => {
+  const query = { status: 'in-stock' };
+
+  if (Array.isArray(targetOwnerIds) && targetOwnerIds.length > 0) {
+    query.$or = [
+      { userId: { $in: targetOwnerIds } },
+      { groupId: { $in: targetOwnerIds } }
+    ];
+  } else if (groupId) {
+    query.groupId = groupId;
+  } else {
+    query.userId = userId;
   }
 
-  // Chỉ lấy các tủ lạnh thỏa mãn điều kiện
-  const fridges = await Fridge.find(fridgeQuery).select('_id');
-  const fridgeIds = fridges.map(f => f._id);
-  
-  const fridgeItems = await FridgeItem.find({
-    fridgeId: { $in: fridgeIds },
-    status: 'in-stock'
-  }).lean();
+  const fridgeItems = await FridgeItem.find(query).lean();
 
-  // 2. Tạo Inventory Map (Key: IngredientId_UnitId -> Qty)
   const inventoryMap = {};
   for (const item of fridgeItems) {
     if (item.foodId && item.unitId) {
@@ -220,26 +216,24 @@ const enrichRecipesWithInventory = async (recipes, userId, targetFridgeIds = nul
     }
   }
 
-  // 3. Duyệt qua từng Recipe để tính toán
   return recipes.map(recipe => {
     let missingCount = 0;
-    
+
     const enrichedIngredients = recipe.ingredients.map(ing => {
-      // Bỏ qua item nhập tay không có ID
       if (!ing.ingredientId) return { ...ing, available: 0, isEnough: false };
 
       const ingId = ing.ingredientId.toString();
       const unitId = ing.unitId ? ing.unitId.toString() : 'null';
       const key = `${ingId}_${unitId}`;
-      
+
       const available = inventoryMap[key] || 0;
       const isEnough = available >= ing.quantity;
-      
+
       if (!isEnough && !ing.optional) missingCount++;
 
       return {
         ...ing,
-        availableQuantity: available, // Để hiển thị "Egg 3/2" (Có 3)
+        availableQuantity: available,
         isEnough
       };
     });
@@ -252,16 +246,15 @@ const enrichRecipesWithInventory = async (recipes, userId, targetFridgeIds = nul
       prepTime: recipe.prepTime,
       ingredients: enrichedIngredients,
       missingIngredientsCount: missingCount,
-      canCook: missingCount === 0 // Để hiển thị checkmark xanh lá
+      canCook: missingCount === 0
     };
   });
 };
 
 /**
- * Tìm kiếm Recipe phục vụ cho màn hình Planning
- * (Kết hợp Text Search + Inventory Check)
+ * searchRecipesForPlan: truyền groupId nếu cần
  */
-export const searchRecipesForPlan = async (userId, query, fridgeIds = null, page = 1, limit = 20) => {
+export const searchRecipesForPlan = async (userId, query, groupId = null, page = 1, limit = 20) => {
   const skip = (page - 1) * limit;
   const filter = {};
   if (query) filter.$text = { $search: query };
@@ -272,27 +265,21 @@ export const searchRecipesForPlan = async (userId, query, fridgeIds = null, page
     .limit(limit)
     .lean();
 
-  // Truyền fridgeIds vào hàm enrich
-  return await enrichRecipesWithInventory(recipes, userId, fridgeIds);
+  return await enrichRecipesWithInventory(recipes, userId, groupId);
 };
 
 /**
- * Gợi ý Recipe dựa trên tủ lạnh (Reuse logic từ Fridge Service nhưng trả về format cho Planner)
+ * getRecommendationsForPlan: dùng fridge-items của user hoặc group
  */
-export const getRecommendationsForPlan = async (userId, fridgeIds = null, limit = 10) => {
-  // Query tủ lạnh: Phải thuộc User + (Optional) nằm trong danh sách ID gửi lên
-  const fridgeQuery = { owner: userId };
-  if (fridgeIds && fridgeIds.length > 0) {
-    fridgeQuery._id = { $in: fridgeIds };
-  }
+export const getRecommendationsForPlan = async (userId, groupId = null, limit = 10) => {
+  const query = { status: 'in-stock' };
+  if (groupId) query.groupId = groupId;
+  else query.userId = userId;
 
-  const fridges = await Fridge.find(fridgeQuery).select('_id');
-  const targetFridgeIds = fridges.map(f => f._id);
-  
-  const fridgeItems = await FridgeItem.find({ fridgeId: { $in: targetFridgeIds }, status: 'in-stock' })
+  const fridgeItems = await FridgeItem.find(query)
     .populate('foodId', 'name')
     .lean();
-    
+
   const ingredientNames = fridgeItems.map(item => item.foodId?.name).filter(Boolean);
   if (ingredientNames.length === 0) return [];
 
@@ -302,6 +289,5 @@ export const getRecommendationsForPlan = async (userId, fridgeIds = null, limit 
   .limit(limit)
   .lean();
 
-  // Truyền fridgeIds vào hàm enrich
-  return await enrichRecipesWithInventory(recipes, userId, fridgeIds);
+  return await enrichRecipesWithInventory(recipes, userId, groupId);
 };

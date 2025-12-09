@@ -1,74 +1,52 @@
-import Fridge from '../model/fridgeRepository.js';
 import FridgeItem from '../model/fridgeItemRepository.js';
 
 const ownershipMiddleware = {
-  /**
-   * Middleware để xác minh rằng người dùng đã đăng nhập là chủ sở hữu của tủ lạnh.
-   * PHẢI được sử dụng SAU middleware verifyToken.
-   */
+  // verifyFridgeOwnership: fridges removed -> return 410 to indicate deprecated endpoint
   verifyFridgeOwnership: async (req, res, next) => {
+    return res.status(410).json({
+      message: 'Fridges have been removed. Use fridge-item endpoints (/api/fridge-items) or group endpoints. This route is deprecated.'
+    });
+  },
+
+  /**
+   * Middleware kiểm tra quyền với item:
+   * - Nếu item.userId tồn tại => chỉ owner user mới được phép
+   * - Nếu item.groupId tồn tại => chỉ members của group (user.groupId) mới được phép
+   * PHẢI được dùng SAU authMiddleware.verifyToken để req.user có id và (optionally) groupId
+   */
+  verifyItemOwnership: async (req, res, next) => {
     try {
-      const fridgeId = req.params.fridgeId;
-      const userId = req.user.id; // Lấy từ req.user do verifyToken cung cấp
+      const { itemId } = req.params;
+      const user = req.user;
+      const uid = user && (user.id || user._id) ? String(user.id ?? user._id) : null;
+      const uGroup = user && (user.groupId || user.group_id) ? String(user.groupId ?? user.group_id) : null;
 
-      if (!fridgeId) {
-        return res.status(400).json({ message: 'Fridge ID is required in parameters.' });
+      if (!itemId) return res.status(400).json({ message: 'Item ID is required in parameters.' });
+
+      const item = await FridgeItem.findById(itemId);
+
+      if (!item) {
+        return res.status(404).json({ message: 'Fridge item not found.' });
       }
 
-      const fridge = await Fridge.findById(fridgeId);
+      const ownerUserId = item.userId ? String(item.userId) : null;
+      const ownerGroupId = item.groupId ? String(item.groupId) : null;
 
-      if (!fridge) {
-        return res.status(404).json({ message: 'Fridge not found.' });
-      }
+      const isOwner =
+        (ownerUserId && uid && ownerUserId === uid) ||
+        (ownerGroupId && uGroup && ownerGroupId === uGroup);
 
-      if (fridge.owner.toString() !== userId) {
-        return res.status(403).json({ message: 'Forbidden: You do not have permission to access this fridge.' });
+      if (!isOwner) {
+        return res.status(403).json({ message: 'Forbidden: You do not have permission to modify this item.' });
       }
 
       next();
     } catch (err) {
-      // Xử lý lỗi nếu fridgeId không phải là một ObjectId hợp lệ
-      if (err.kind === 'ObjectId') {
-         return res.status(400).json({ message: 'Invalid Fridge ID format.' });
+      // Mongoose CastError for invalid ObjectId
+      if (err && err.name === 'CastError') {
+        return res.status(400).json({ message: 'Invalid Item ID format.' });
       }
       res.status(500).json({ message: 'Internal server error during authorization check.' });
-    }
-  },
-
-  /**
-   * THÊM MIDDLEWARE MỚI NÀY
-   * Middleware để xác minh người dùng là chủ sở hữu của một ITEM.
-   * Dùng cho các route có :itemId trong URL.
-   */
-  verifyItemOwnership: async (req, res, next) => {
-    try {
-        const { itemId } = req.params;
-        const userId = req.user.id;
-
-        const item = await FridgeItem.findById(itemId);
-
-        if (!item) {
-            return res.status(404).json({ message: 'Fridge item not found.' });
-        }
-        
-        // Từ item, tìm ra tủ lạnh chứa nó
-        const fridge = await Fridge.findById(item.fridgeId);
-
-        if (!fridge) {
-             return res.status(404).json({ message: 'The fridge containing this item no longer exists.' });
-        }
-
-        // Kiểm tra quyền sở hữu của tủ lạnh đó
-        if (fridge.owner.toString() !== userId) {
-            return res.status(403).json({ message: 'Forbidden: You do not have permission to modify this item.' });
-        }
-
-        next();
-    } catch (err) {
-        if (err.kind === 'ObjectId') {
-            return res.status(400).json({ message: 'Invalid Item ID format.' });
-        }
-        res.status(500).json({ message: 'Internal server error during authorization check.' });
     }
   }
 };

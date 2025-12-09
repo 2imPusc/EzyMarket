@@ -295,16 +295,16 @@ router.post('/items/bulk', mealPlanController.addItemsBulk);
  *     tags: [MealPlans]
  *     security:
  *       - bearerAuth: []
- *     description: "Search for recipes and check if the user has enough ingredients in their fridge."
+ *     description: "Search for recipes and check if the user has enough ingredients in their fridge-items."
  *     parameters:
  *       - in: query
  *         name: q
  *         schema: { type: string }
  *         description: Keyword to search
  *       - in: query
- *         name: fridgeIds
+ *         name: groupId
  *         schema: { type: string }
- *         description: "Optional. Comma-separated list of fridge IDs to check inventory (e.g., 'id1,id2'). If omitted, checks all user fridges."
+ *         description: "Optional. If provided, check the specified group's fridge-items. If omitted, the authenticated user's fridge-items are used."
  *       - in: query
  *         name: page
  *         schema: { type: integer, default: 1 }
@@ -327,16 +327,16 @@ router.get('/recipes/search', mealPlanController.searchRecipes);
  * @swagger
  * /api/meal-plans/recipes/recommendations:
  *   get:
- *     summary: Get recipe recommendations based on fridge
+ *     summary: Get recipe recommendations based on fridge-items
  *     tags: [MealPlans]
  *     security:
  *       - bearerAuth: []
- *     description: "Suggest recipes that match ingredients currently in the user's fridge."
+ *     description: "Suggest recipes that match ingredients currently available in the user's fridge-items."
  *     parameters:
  *       - in: query
- *         name: fridgeIds
+ *         name: groupId
  *         schema: { type: string }
- *         description: "Optional. Comma-separated list of fridge IDs. If omitted, checks all user fridges."
+ *         description: "Optional. If provided, recommendations are based on the specified group's fridge-items. If omitted, use authenticated user's fridge-items."
  *       - in: query
  *         name: limit
  *         schema: { type: integer, default: 10 }
