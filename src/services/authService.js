@@ -2,16 +2,15 @@ import jwt from 'jsonwebtoken';
 import User from '../model/userRepository.js';
 import { sendVerificationEmail } from './verifyEmail.js';
 
-export const handleRegister = async ({ userName, email, phone, password, req }) => {
+export const handleRegister = async ({ userName, email, phone, password }) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) {
     if (!existingUser.emailVerified) {
-      await sendVerificationEmail(existingUser, req);
+      await sendVerificationEmail(existingUser);
       return {
-        status: 200,
+        status: 409,
         data: {
-          message:
-            'This email has registered but not verified. Verification email resent. Please check your email.',
+          message: 'This email is already registered but not verified. Verification email resent.',
         },
       };
     }
@@ -23,7 +22,7 @@ export const handleRegister = async ({ userName, email, phone, password, req }) 
 
   const newUser = new User({ userName, email, phone, password });
   await newUser.save();
-  await sendVerificationEmail(newUser, req);
+  await sendVerificationEmail(newUser);
   return {
     status: 201,
     data: {
@@ -36,6 +35,10 @@ export const handleRegister = async ({ userName, email, phone, password, req }) 
       message: 'Registration successful. Please check your email to verify your account.',
     },
   };
+};
+
+export const getInfoUser = async () => {
+  // Implementation depends on how user info is retrieved
 };
 
 export const generateRefreshToken = (user) => {

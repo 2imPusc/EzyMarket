@@ -10,9 +10,18 @@ const authMiddleware = {
     jwt.verify(token, process.env.JWT_ACCESS_KEY, async (err, decoded) => {
       if (err) return res.status(403).json({ message: 'Invalid token.' });
       try {
-        // load full user to get up-to-date groupId
         const userFromDb = await User.findById(decoded.id).lean();
         if (!userFromDb) return res.status(401).json({ message: 'User not found.' });
+
+        const verificationPaths = ['/email/verification', '/email/verify'];
+        const isVerificationEndpoint = verificationPaths.some((path) => req.path.includes(path));
+
+        if (!userFromDb.emailVerified && !isVerificationEndpoint) {
+          return res.status(403).json({
+            message: 'Please verify your email before accessing this resource.',
+            emailVerified: false,
+          });
+        }
 
         req.user = {
           id: String(userFromDb._id),
@@ -20,6 +29,7 @@ const authMiddleware = {
           groupId: userFromDb.groupId ? String(userFromDb.groupId) : null,
           email: userFromDb.email,
           userName: userFromDb.userName,
+          emailVerified: userFromDb.emailVerified,
         };
         next();
       } catch (e) {
