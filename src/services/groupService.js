@@ -1,4 +1,4 @@
-import Group from '../model/groupReposiroty.js';
+import Group from '../model/groupRepository.js';
 import User from '../model/userRepository.js';
 
 export const createGroup = async (name, description, ownerId) => {
@@ -40,10 +40,13 @@ export const createGroup = async (name, description, ownerId) => {
 
 export const addMemberToGroup = async (groupId, userId, requesterId) => {
   const group = await Group.findById(groupId);
+  if (!group) return { status: 404, data: { message: GROUP_ERRORS.GROUP_NOT_FOUND } };
+
   const user = await User.findById(userId);
   if (!user) return { status: 404, data: { message: 'User not found' } };
 
-  if (String(user.groupId ?? '') !== '') {
+  // Kiểm tra user đã có group chưa (cách tốt hơn)
+  if (user.groupId !== null && user.groupId !== undefined) {
     return { status: 400, data: { message: 'User already belongs to a group' } };
   }
 
@@ -69,13 +72,14 @@ export const addMemberToGroup = async (groupId, userId, requesterId) => {
 
 export const removeMemberFromGroup = async (groupId, userId, requesterId) => {
   const group = await Group.findById(groupId);
+  if (!group) return { status: 404, data: { message: 'Group not found' } };
 
   if (userId === group.ownerId.toString()) {
-    return { status: 400, data: { message: 'Cannot remove group owner' } };
+    return { status: 400, data: { message: 'Cannot remove the owner from the group' } };
   }
 
   if (!group.members.some((id) => id.toString() === userId)) {
-    return { status: 400, data: { message: 'User is not a member' } };
+    return { status: 400, data: { message: 'User is not a member of the group' } };
   }
 
   group.members = group.members.filter((id) => id.toString() !== userId);
@@ -90,13 +94,20 @@ export const removeMemberFromGroup = async (groupId, userId, requesterId) => {
 
   return {
     status: 200,
-    data: { message: 'Member removed successfully', group: { id: group._id, name: group.name, members: group.members } },
+    data: {
+      message: 'Member removed successfully',
+      group: { id: group._id, name: group.name, members: group.members },
+    },
   };
 };
 
 export const deleteGroup = async (groupId, userId) => {
+  const group = await Group.findById(groupId);
+  if (!group) return { status: 404, data: { message: 'Group not found' } };
+
   await User.updateMany({ groupId: groupId }, { $set: { groupId: null } });
   await Group.findByIdAndDelete(groupId);
+
   return { status: 200, data: { message: 'Group deleted successfully' } };
 };
 
@@ -105,6 +116,10 @@ export const getGroupDetails = async (groupId, userId) => {
     const group = await Group.findById(groupId)
       .populate('ownerId', 'userName email avatar')
       .populate('members', 'userName email avatar');
+
+    if (!group) {
+      return { status: 404, data: { message: 'Group not found' } };
+    }
 
     return {
       status: 200,

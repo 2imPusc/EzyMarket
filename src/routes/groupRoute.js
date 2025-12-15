@@ -125,6 +125,14 @@ router.get(
  *   post:
  *     summary: Add a member to group (owner only)
  *     tags: [Groups]
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Group ID
+ *         example: 507f1f77bcf86cd799439011
  *     requestBody:
  *       required: true
  *       content:
@@ -132,14 +140,11 @@ router.get(
  *           schema:
  *             type: object
  *             required:
- *               - groupId
  *               - userId
  *             properties:
- *               groupId:
- *                 type: string
- *                 example: 507f1f77bcf86cd799439011
  *               userId:
  *                 type: string
+ *                 description: User ID to add to the group
  *                 example: 507f1f77bcf86cd799439012
  *     responses:
  *       200:
@@ -176,22 +181,21 @@ router.post(
  *   delete:
  *     summary: Remove a member from group (owner only)
  *     tags: [Groups]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - groupId
- *               - userId
- *             properties:
- *               groupId:
- *                 type: string
- *                 example: 507f1f77bcf86cd799439011
- *               userId:
- *                 type: string
- *                 example: 507f1f77bcf86cd799439012
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Group ID
+ *         example: 507f1f77bcf86cd799439011
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID to remove
+ *         example: 507f1f77bcf86cd799439012
  *     responses:
  *       200:
  *         description: Member removed successfully

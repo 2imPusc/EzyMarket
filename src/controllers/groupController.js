@@ -22,7 +22,8 @@ const groupController = {
 
   addMember: async (req, res) => {
     try {
-      const { groupId, userId } = req.body;
+      const { groupId } = req.params;
+      const { userId } = req.body;
       const requesterId = req.user.id;
 
       const result = await addMemberToGroup(groupId, userId, requesterId);
@@ -34,7 +35,7 @@ const groupController = {
 
   removeMember: async (req, res) => {
     try {
-      const { groupId, userId } = req.body;
+      const { groupId, userId } = req.params;
       const requesterId = req.user.id;
 
       const result = await removeMemberFromGroup(groupId, userId, requesterId);

@@ -1,4 +1,4 @@
-import Group from '../model/groupReposiroty.js';
+import Group from '../model/groupRepository.js';
 import mongoose from 'mongoose';
 
 const groupMiddleware = {
