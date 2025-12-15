@@ -51,7 +51,22 @@ export const validateIngredient = (req, res, next) => {
     return res.status(400).json({ message: 'defaultExpireDays must be a positive number' });
   }
 
-  const validCategories = ['vegetables', 'fruits', 'meat', 'seafood', 'dairy', 'grains', 'spices', 'beverages', 'condiments', 'frozen', 'canned', 'bakery', 'snacks', 'other'];
+  const validCategories = [
+    'vegetables',
+    'fruits',
+    'meat',
+    'seafood',
+    'dairy',
+    'grains',
+    'spices',
+    'beverages',
+    'condiments',
+    'frozen',
+    'canned',
+    'bakery',
+    'snacks',
+    'other',
+  ];
   if (foodCategory && !validCategories.includes(foodCategory)) {
     return res.status(400).json({ message: 'Invalid foodCategory' });
   }
