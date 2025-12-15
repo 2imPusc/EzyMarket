@@ -40,7 +40,7 @@ export const createGroup = async (name, description, ownerId) => {
 
 export const addMemberToGroup = async (groupId, userId, requesterId) => {
   const group = await Group.findById(groupId);
-  if (!group) return { status: 404, data: { message: GROUP_ERRORS.GROUP_NOT_FOUND } };
+  if (!group) return { status: 404, data: { message: 'Group not found' } };
 
   const user = await User.findById(userId);
   if (!user) return { status: 404, data: { message: 'User not found' } };
@@ -61,11 +61,17 @@ export const addMemberToGroup = async (groupId, userId, requesterId) => {
   user.groupId = groupId;
   await user.save();
 
+  const updatedGroup = await Group.findById(group._id).populate('members', 'userName email avatar');
+
   return {
     status: 200,
     data: {
       message: 'Member added successfully',
-      group: { id: group._id, name: group.name, members: group.members },
+      group: {
+        id: updatedGroup._id,
+        name: updatedGroup.name,
+        members: updatedGroup.members,
+      },
     },
   };
 };
@@ -140,11 +146,15 @@ export const getGroupDetails = async (groupId, userId) => {
   }
 };
 
-export const getUserGroups = async (userId) => {
+export const getUserGroups = async (userId, populateMembers = false) => {
   try {
-    const groups = await Group.find({ members: userId })
-      .populate('ownerId', 'userName email avatar')
-      .select('name description ownerId members createdAt');
+    let query = Group.find({ members: userId }).populate('ownerId', 'userName email avatar');
+
+    if (populateMembers) {
+      query = query.populate('members', 'userName email avatar');
+    }
+
+    const groups = await query.select('name description ownerId members createdAt');
 
     return {
       status: 200,

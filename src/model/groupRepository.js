@@ -10,7 +10,6 @@ const groupSchema = new mongoose.Schema({
 });
 
 // Thêm indexes để tối ưu query performance
-groupSchema.index({ ownerId: 1 });
 groupSchema.index({ members: 1 });
 groupSchema.index({ name: 1 });
 
