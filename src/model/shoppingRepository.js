@@ -14,13 +14,25 @@ const shoppingItemSchema = new mongoose.Schema({
     type: Number,
     default: 1,
   },
-  unit: {
-    type: String,
-    default: '',
+  unitId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Unit',
   },
   isPurchased: {
     type: Boolean,
     default: false,
+  },
+  price: {
+    type: Number,
+    default: null,
+  },
+  servingQuantity: {
+    type: Number,
+    default: null,
+  },
+  expiryDate: {
+    type: Date,
+    default: null,
   },
 });
 
@@ -29,7 +41,7 @@ const shoppingListSchema = new mongoose.Schema(
     groupId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Group',
-      required: true,
+      default: null,
     },
     creatorId: {
       type: mongoose.Schema.Types.ObjectId,

@@ -35,6 +35,21 @@ const shoppingController = {
     }
   },
 
+  checkoutShoppingList: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { items } = req.body;
+      const list = await shoppingService.checkoutShoppingList(id, items);
+
+      if (!list) {
+        return res.status(404).json({ message: 'Shopping list not found' });
+      }
+      res.status(200).json(list);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+
   updateShoppingList: async (req, res) => {
     try {
       const { id } = req.params;

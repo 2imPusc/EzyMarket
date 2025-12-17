@@ -39,6 +39,16 @@ router.use(authMiddleware.verifyToken);
  *         isPurchased:
  *           type: boolean
  *           description: Whether the item is purchased
+ *         price:
+ *           type: number
+ *           description: Giá tiền thực tế mua
+ *         servingQuantity:
+ *           type: number
+ *           description: Số khẩu phần
+ *         expiryDate:
+ *           type: string
+ *           format: date
+ *           description: Ngày hết hạn
  *     ShoppingList:
  *       type: object
  *       required:
@@ -210,6 +220,62 @@ router.get(
  *         description: Server error
  */
 router.get('/:id', shoppingController.getShoppingListById);
+
+/**
+ * @swagger
+ * /api/shopping-lists/{id}/checkout:
+ *   post:
+ *     summary: Hoàn thành shopping list - Cập nhật thông tin đã mua và chuyển vào tủ lạnh
+ *     description: Cập nhật thông tin các nguyên liệu đã mua (giá, số lượng, hạn sử dụng), đổi status sang completed và tự động thêm vào fridge-items. Chỉ cần gọi API này 1 lần duy nhất.
+ *     tags: [ShoppingLists]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: The shopping list id
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               items:
+ *                 type: array
+ *                 description: Danh sách các item đã mua cần cập nhật thông tin
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     itemId:
+ *                       type: string
+ *                       description: ID của item trong shopping list
+ *                     price:
+ *                       type: number
+ *                       description: Giá tiền thực tế mua
+ *                     servingQuantity:
+ *                       type: number
+ *                       description: Số khẩu phần (nếu không theo bữa ăn)
+ *                     expiryDate:
+ *                       type: string
+ *                       format: date
+ *                       description: Ngày hết hạn
+ *     responses:
+ *       200:
+ *         description: Checkout thành công, shopping list đã completed và items đã được thêm vào tủ lạnh
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ShoppingList'
+ *       404:
+ *         description: Shopping list not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/:id/checkout', shoppingController.checkoutShoppingList);
 
 /**
  * @swagger

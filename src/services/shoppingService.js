@@ -26,8 +26,10 @@ const shoppingService = {
 
       for (const planRequest of mealPlans) {
         const date = new Date(planRequest.date);
-        const startOfDay = new Date(date.setHours(0, 0, 0, 0));
-        const endOfDay = new Date(date.setHours(23, 59, 59, 999));
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
 
         const plan = await MealPlan.findOne({
           userId,
@@ -120,46 +122,59 @@ const shoppingService = {
       .populate('items.ingredientId', 'name imageURL');
   },
 
-  updateShoppingList: async (id, updateData) => {
-    const list = await ShoppingList.findByIdAndUpdate(id, updateData, { new: true });
+  checkoutShoppingList: async (id, checkoutItems) => {
+    const list = await ShoppingList.findById(id);
+    if (!list) return null;
 
-    if (list && list.status === 'completed' && updateData.status === 'completed') {
-      try {
-        // Khi shopping list được hoàn tất, chuyển các item đã mua vào fridge-items.
-        // Owner: nếu list.groupId tồn tại -> group, ngược lại assign về creatorId (user).
-        const ownerGroupId = list.groupId ?? null;
-        const ownerUserId = ownerGroupId ? null : list.creatorId;
-
-        for (const item of list.items) {
-          if (item.isPurchased) {
-            let unitId = null;
-            if (item.unit) {
-              const unitObj = await Unit.findOne({
-                $or: [{ name: item.unit }, { abbreviation: item.unit }],
-              });
-              if (unitObj) unitId = unitObj._id;
-            }
-
-            if (item.ingredientId && unitId) {
-              // Gọi trực tiếp fridgeItemService với payload owner (groupId hoặc userId)
-              const payload = {
-                foodId: item.ingredientId,
-                unitId: unitId,
-                quantity: item.quantity,
-                purchaseDate: new Date(),
-                groupId: ownerGroupId ?? null,
-                userId: ownerUserId ?? null,
-              };
-              await fridgeItemService.addFridgeItem(payload);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error moving items to fridge-items:', error);
+    // Cập nhật thông tin cho các item đã mua
+    for (const checkoutItem of checkoutItems) {
+      const item = list.items.id(checkoutItem.itemId);
+      if (item && item.isPurchased) {
+        item.price = checkoutItem.price || 0;
+        item.servingQuantity = checkoutItem.servingQuantity || null;
+        item.expiryDate = checkoutItem.expiryDate || null;
       }
     }
 
+    // Chuyển status sang completed
+    list.status = 'completed';
+    await list.save();
+
+    // Di chuyển items vào fridge ngay lập tức
+    try {
+      const ownerGroupId = list.groupId ?? null;
+      const ownerUserId = ownerGroupId ? null : list.creatorId;
+
+      for (const item of list.items) {
+        if (item.isPurchased && item.ingredientId && item.unitId) {
+          const payload = {
+            foodId: item.ingredientId,
+            unitId: item.unitId,
+            quantity: item.quantity,
+            purchaseDate: new Date(),
+            expiryDate: item.expiryDate || null,
+            price: item.price || 0,
+            groupId: ownerGroupId,
+            userId: ownerUserId,
+          };
+          await fridgeItemService.addFridgeItem(payload);
+        }
+      }
+    } catch (error) {
+      console.error('Error moving items to fridge-items:', error);
+      throw error;
+    }
+
     return list;
+  },
+
+  updateShoppingList: async (id, updateData) => {
+    const list = await ShoppingList.findById(id);
+    if (!list) return null;
+
+    // Cập nhật thông tin cơ bản (title, description, status)
+    Object.assign(list, updateData);
+    return await list.save();
   },
 
   deleteShoppingList: async (id) => {
