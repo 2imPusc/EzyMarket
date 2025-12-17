@@ -126,7 +126,6 @@ const shoppingService = {
     const list = await ShoppingList.findById(id);
     if (!list) return null;
 
-    // Cập nhật thông tin cho các item đã mua
     for (const checkoutItem of checkoutItems) {
       const item = list.items.id(checkoutItem.itemId);
       if (item && item.isPurchased) {
@@ -136,11 +135,9 @@ const shoppingService = {
       }
     }
 
-    // Chuyển status sang completed
     list.status = 'completed';
     await list.save();
 
-    // Di chuyển items vào fridge ngay lập tức
     try {
       const ownerGroupId = list.groupId ?? null;
       const ownerUserId = ownerGroupId ? null : list.creatorId;
