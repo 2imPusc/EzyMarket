@@ -123,6 +123,50 @@ const authController = {
     }
   },
 
+  // ADMIN LOGIN - Only for admin dashboard
+  adminLogin: async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const user = await User.findOne({ email });
+
+      if (!user) {
+        return res.status(400).json({ message: 'Invalid email or password' });
+      }
+
+      // Check if user is admin
+      if (user.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied. Admin privileges required.' });
+      }
+
+      if (!user.emailVerified) {
+        return res.status(403).json({ message: 'Please verify your email before logging in.' });
+      }
+
+      const isMatch = await user.matchPassword(password);
+      if (!isMatch) {
+        return res.status(400).json({ message: 'Invalid email or password!' });
+      }
+
+      const token = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user);
+      user.refreshToken = refreshToken;
+      await user.save();
+
+      res.status(200).json({
+        user: {
+          id: user._id,
+          userName: user.userName,
+          role: user.role,
+          email: user.email,
+        },
+        token: token,
+        refreshToken,
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  },
+
   //REFRESH TOKEN
   refreshToken: async (req, res) => {
     const token = req.body.refreshToken;
@@ -267,6 +311,74 @@ const authController = {
     } catch (err) {
       console.error('Get user by email/phone error:', err);
       res.status(500).json({ message: 'Internal server error' });
+    }
+  },
+
+  getList: async (req, res) => {
+    try {
+      console.log('Get list user');
+      const { page = 1, pageSize = 10, search = '', role, emailVerified } = req.query;
+
+      // Build query
+      const query = {};
+
+      // Search by email or userName
+      if (search) {
+        query.$or = [
+          { email: { $regex: search, $options: 'i' } },
+          { userName: { $regex: search, $options: 'i' } },
+        ];
+      }
+
+      // Filter by role
+      if (role) {
+        query.role = role;
+      }
+
+      // Filter by email verification status
+      if (emailVerified !== undefined) {
+        query.emailVerified = emailVerified === 'true';
+      }
+
+      // Calculate pagination
+      const pageNum = parseInt(page);
+      const limit = parseInt(pageSize);
+      const skip = (pageNum - 1) * limit;
+
+      // Get total count
+      const total = await User.countDocuments(query);
+
+      // Get users with pagination
+      const users = await User.find(query)
+        .select('_id userName email role emailVerified phone avatar createdAt updatedAt')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      // Format response
+      const formattedUsers = users.map((user) => ({
+        id: user._id,
+        userName: user.userName,
+        email: user.email,
+        role: user.role,
+        emailVerified: user.emailVerified,
+        phone: user.phone,
+        avatar: user.avatar,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      }));
+
+      res.status(200).json({
+        data: formattedUsers,
+        total,
+        page: pageNum,
+        pageSize: limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (e) {
+      console.error('Get users list error:', e);
+      res.status(500).json({ message: e.message });
     }
   },
 
