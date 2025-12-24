@@ -1,6 +1,7 @@
 import express from 'express';
 import authController from '../controllers/authController.js';
 import authMiddleware from '#middlewares/authMiddleware.js';
+import groupController from '#src/controllers/groupController.js';
 
 const router = express.Router();
 
@@ -75,29 +76,29 @@ router.put('/users/:id', authMiddleware.verifyAdmin, authController.updateUserBy
 
 // ============= GROUP MANAGEMENT =============
 // GET all groups with pagination
-router.get('/groups', authMiddleware.verifyAdmin, authController.getAllGroups);
+router.get('/groups', authMiddleware.verifyAdmin, groupController.getAllGroups);
 
 // GET group by ID with members
-router.get('/groups/:id', authMiddleware.verifyAdmin, authController.getGroupByIdAdmin);
+router.get('/groups/:id', authMiddleware.verifyAdmin, groupController.getGroupByIdAdmin);
 
 // UPDATE group
-router.put('/groups/:id', authMiddleware.verifyAdmin, authController.updateGroupByAdmin);
+router.put('/groups/:id', authMiddleware.verifyAdmin, groupController.updateGroupByAdmin);
 
 // DELETE group
-router.delete('/groups/:id', authMiddleware.verifyAdmin, authController.deleteGroupByAdmin);
+router.delete('/groups/:id', authMiddleware.verifyAdmin, groupController.deleteGroupByAdmin);
 
 // ADD member to group
 router.post(
   '/groups/:id/members',
   authMiddleware.verifyAdmin,
-  authController.addMemberToGroupByAdmin
+  groupController.addMemberToGroupByAdmin
 );
 
 // REMOVE member from group
 router.delete(
   '/groups/:id/members',
   authMiddleware.verifyAdmin,
-  authController.removeMemberFromGroupByAdmin
+  groupController.removeMemberFromGroupByAdmin
 );
 
 export default router;

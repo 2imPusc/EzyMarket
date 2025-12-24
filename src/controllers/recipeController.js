@@ -130,7 +130,6 @@ const getMyRecipes = async (req, res) => {
 
 const getSystem = async (req, res) => {
   try {
-    console.log('Received getSystem request with query:', req.query);
     // Sửa: Nhận tagId thay vì tag
     const { q, tagId, page, limit } = req.query;
     const result = await recipeService.getSystemRecipes({ q, tagId, page, limit });
