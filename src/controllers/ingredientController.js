@@ -60,41 +60,36 @@ const ingredientController = {
   // GET ALL - Lấy danh sách nguyên liệu của hệ thống + cá nhân
   getAll: async (req, res) => {
     try {
-      const { page = 1, limit = 20, category, search } = req.query;
-      const { id: userId } = req.user; // Lấy id người dùng
+      const page = Math.max(parseInt(req.query.page) || 1, 1);
+      const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+      const search = (req.query.search || '').trim();
+      const category = (req.query.category || '').trim();
+      const scope = (req.query.scope || 'available'); // system | mine | available | all
+      const isAdmin = req.user?.role === 'admin';
 
-      // -- LOGIC MỚI --
-      // Xây dựng query cơ bản: lấy của hệ thống (null) HOẶC của người dùng hiện tại
-      const query = {
-        creatorId: { $in: [userId, null] }
-      };
+      const filter = {};
+      if (scope === 'system') filter.creatorId = null;
+      else if (scope === 'mine') filter.creatorId = req.user.id;
+      else if (scope === 'all' && isAdmin) {
+        // admin xem tất cả: không lọc creatorId
+      } else {
+        // available: system + cá nhân của chính user
+        filter.creatorId = { $in: [null, req.user.id] };
+      }
 
-      // Thêm các bộ lọc khác
-      if (category) query.foodCategory = category;
-      if (search) query.name = new RegExp(search, 'i');
+      if (search) filter.name = { $regex: new RegExp(search, 'i') };
+      if (category) filter.foodCategory = category;
 
-      // Pagination
-      const skip = (page - 1) * limit;
-      const ingredients = await Ingredient.find(query)
-        .select('-__v')
+      const total = await Ingredient.countDocuments(filter);
+      const ingredients = await Ingredient.find(filter)
         .sort({ name: 1 })
-        .skip(skip)
-        .limit(parseInt(limit));
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
 
-      const total = await Ingredient.countDocuments(query);
-
-      res.status(200).json({
-        ingredients,
-        pagination: {
-          total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / limit),
-        },
-      });
+      res.status(200).json({ ingredients, pagination: { page, limit, total } });
     } catch (err) {
-      console.error('Get all ingredients error:', err);
-      res.status(500).json({ message: 'Internal server error' });
+      res.status(500).json({ message: err.message });
     }
   },
 
