@@ -11,7 +11,7 @@ const router = express.Router();
 /**
  * @swagger
  * tags:
- *   name: Recipes &  Recipe-tags 
+ *   name: Recipes & Recipe-tags  
  *   description: API for managing system-wide and user-created recipes and tags
  */
 
@@ -77,10 +77,10 @@ router.use(authMiddleware.verifyToken);
 
 /**
  * @swagger
- * /api/tags:
+ * /api/recipe-tags:
  *   post:
  *     summary: Create a new tag (Personal or System)
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags ]
  *     security:
  *       - bearerAuth: []
  *     description: |
@@ -111,10 +111,10 @@ router.post('/', tagController.create);
 
 /**
  * @swagger
- * /api/tags:
+ * /api/recipe-tags:
  *   get:
  *     summary: Get available tags (System + User's own)
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags ]
  *     security:
  *       - bearerAuth: []
  *     description: "Retrieves a list of all system-wide tags (created by admins) PLUS all personal tags created by the logged-in user."
@@ -138,10 +138,10 @@ router.get('/', tagController.getAll);
 
 /**
  * @swagger
- * /api/tags/suggest:
+ * /api/recipe-tags/suggest:
  *   get:
  *     summary: Suggest tags for autocomplete
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags ]
  *     security:
  *       - bearerAuth: []
  *     description: "Returns a list of tags (system tags + user's personal tags) matching the search keyword. Used for autocomplete dropdowns."
@@ -172,10 +172,10 @@ router.get('/suggest', tagController.suggest);
 
 /**
  * @swagger
- * /api/tags/{identifier}:
+ * /api/recipe-tags/{identifier}:
  *   get:
  *     summary: Get a single tag by its ID or name
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags ]
  *     security:
  *       - bearerAuth: []
  *     description: |
@@ -215,10 +215,10 @@ router.get('/:identifier', tagController.getById);
 
 /**
  * @swagger
- * /api/tags/{id}:
+ * /api/recipe-tags/{id}:
  *   put:
  *     summary: Update a tag
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags ]
  *     security:
  *       - bearerAuth: []
  *     description: |
@@ -255,10 +255,10 @@ router.put('/:id', tagController.update);
 
 /**
  * @swagger
- * /api/tags/{id}:
+ * /api/recipe-tags/{id}:
  *   delete:
  *     summary: Delete a tag
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags ]
  *     security:
  *       - bearerAuth: []
  *     description: |

@@ -13,7 +13,7 @@ router.use(authMiddleware.verifyToken);
 /**
  * @swagger
  * tags:
- *   name: Recipes &  Recipe-tags 
+ *   name: Recipes & Recipe-tags 
  *   description: API for managing system-wide and user-created recipes and tags
  */
 
@@ -186,7 +186,7 @@ router.use(authMiddleware.verifyToken);
  * /api/recipes:
  *   post:
  *     summary: Create a new recipe (Personal or System)
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags]
  *     security: [{ bearerAuth: [] }]
  *     description: |
  *       Creates a new recipe.
@@ -217,7 +217,7 @@ router.post('/', recipeController.create);
  * /api/recipes/my-recipes:
  *   get:
  *     summary: Get all recipes created by the user (personal recipes)
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: query
@@ -247,7 +247,7 @@ router.get('/my-recipes', recipeController.getMyRecipes);
  * /api/recipes/search:
  *   get:
  *     summary: Search all recipes (system and user-created)
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags]
  *     description: "Public endpoint for recipe discovery. Searches across all system recipes and all user-created recipes."
  *     parameters:
  *       - in: query
@@ -279,7 +279,7 @@ router.get('/search', recipeController.search);
  * /api/recipes/system-recipes:
  *   get:
  *     summary: Get all system-wide recipes
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags]
  *     description: "Retrieves only the official, admin-created recipes."
  *     parameters:
  *       - in: query
@@ -311,7 +311,7 @@ router.get('/system-recipes', recipeController.getSystem);
  * /api/recipes/suggestions:
  *   get:
  *     summary: Get recipe title suggestions (for autocomplete)
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags]
  *     description: "Optimized for speed. Returns a limited list of recipes whose titles START WITH the search query."
  *     parameters:
  *       - in: query
@@ -327,108 +327,10 @@ router.get('/suggestions', recipeController.getSuggestions);
 
 /**
  * @swagger
- * /api/recipes/shopping-list/from-recipe:
- *   post:
- *     summary: Generate shopping list based on Fridge Inventory
- *     tags: [Recipes &  Recipe-tags]
- *     security:
- *       - bearerAuth: []
- *     description: Calculates missing ingredients by comparing the recipe with the authenticated user's current fridge-items (in-stock).
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [recipeId]
- *             properties:
- *               recipeId:
- *                 type: string
- *               groupId:
- *                 type: string
- *                 description: Optional. If provided, check the group's fridge-items. If omitted, the API checks the authenticated user's fridge-items.
- *     responses:
- *       200:
- *         description: List of items to buy
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 recipeId:
- *                   type: string
- *                 title:
- *                   type: string
- *                 missing:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       name:
- *                         type: string
- *                       quantity:
- *                         type: number
- *                         description: The quantity NEEDED (Recipe Qty - Available Qty)
- *                       unitText:
- *                         type: string
- *                       inventoryNote:
- *                         type: string
- *                         description: Warning if item exists but in different unit.
- *                       haveQuantity:
- *                         type: number
- *                         description: Amount currently available in fridge-items (matching unit).
- *       400:
- *         description: Bad request (Missing ID)
- *       500:
- *         description: Internal server error
- */
-router.post('/shopping-list/from-recipe', recipeController.shoppingListFromRecipe);
-
-/**
- * @swagger
- * /api/recipes/master-data/ingredients:
- *   get:
- *     summary: Autocomplete ingredient names
- *     description: >
- *       Gợi ý tên nguyên liệu dựa trên từ khóa nhập vào 
- *       Dùng cho chức năng "Typeahead/Autocomplete" khi user nhập liệu để đảm bảo chuẩn hóa dữ liệu.
- *     tags: [Recipes &  Recipe-tags]
- *     parameters:
- *       - in: query
- *         name: q
- *         schema:
- *           type: string
- *         description: Từ khóa tìm kiếm
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *         description: Giới hạn số lượng gợi ý trả về.
- *     responses:
- *       200:
- *         description: List of suggestions
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 suggestions:
- *                   type: array
- *                   items:
- *                     type: string
- *                   example: ["thịt bò", "thịt heo", "thịt gà"]
- *       500:
- *         description: Internal server error
- */
-router.get('/master-data/ingredients', recipeController.masterDataIngredients);
-
-/**
- * @swagger
  * /api/recipes/{recipeId}:
  *   get:
  *     summary: Get a single recipe by its ID
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags]
  *     parameters:
  *       - in: path
  *         name: recipeId
@@ -451,7 +353,7 @@ router.get('/:recipeId', recipeController.getById);
  * /api/recipes/{recipeId}:
  *   put:
  *     summary: Update a personal recipe (Owner or Admin only)
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags]
  *     security: [{ bearerAuth: [] }]
  *     description: "A user can only update a recipe if they are its creator, or if they are an admin."
  *     parameters:
@@ -486,7 +388,7 @@ router.put('/:recipeId', recipeController.update);
  * /api/recipes/{recipeId}:
  *   delete:
  *     summary: Delete a personal recipe (Owner or Admin only)
- *     tags: [Recipes &  Recipe-tags]
+ *     tags: [Recipes & Recipe-tags]
  *     security: [{ bearerAuth: [] }]
  *     description: "A user can only delete a recipe if they are its creator, or if they are an admin."
  *     parameters:

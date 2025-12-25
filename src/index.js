@@ -25,14 +25,13 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Swagger Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
 app.use('/api/user', authRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/ingredients', ingredientRoutes);
 app.use('/api/units', unitRoutes);
 app.use('/api/fridge-items', fridgeItemRoutes);
 app.use('/api/recipes', recipeRoutes);
-app.use('/api/tags', tagRoutes);
+app.use('/api/recipe-tags', tagRoutes);
 app.use('/api/meal-plans', mealPlanRoutes);
 app.use('/api/shopping-lists', shoppingRoutes);
 app.use('/api/reports', reportRoutes);

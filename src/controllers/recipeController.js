@@ -158,46 +158,6 @@ const getSuggestions = async (req, res) => {
   }
 };
 
-/**
- * 1. Tạo Shopping List (Cập nhật)
- * Input: { recipeId, fridgeId (optional) }
- * Output: Danh sách các món còn thiếu kèm số lượng cụ thể
- */
-export const shoppingListFromRecipe = async (req, res) => {
-  try {
-    const { recipeId, groupId } = req.body; // hoặc req.query tùy route
-    const user = req.user;
-    const userId = user && (user.id ?? user._id);
-
-    if (!recipeId) return res.status(400).json({ message: 'recipeId is required' });
-
-    const result = await recipeService.buildShoppingListFromFridge(
-      recipeId,
-      userId,
-      groupId ?? null
-    );
-    return res.status(200).json(result);
-  } catch (err) {
-    // Nếu service gắn err.status thì dùng, ngược lại 500
-    const status = err && err.status ? err.status : 500;
-    return res.status(status).json({ message: err.message || 'Internal server error' });
-  }
-};
-
-const masterDataIngredients = async (req, res) => {
-  try {
-    const docs = await recipeService.suggestIngredientNames(
-      req.query.q,
-      parseInt(req.query.limit) || 10
-    );
-    res.json({ suggestions: docs.map((d) => d.name) });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// ĐÃ XÓA: const getTags (Vì thừa, dùng tagController)
-
 export default {
   create,
   update,
@@ -206,7 +166,5 @@ export default {
   search,
   getMyRecipes,
   getSystem,
-  getSuggestions, // Đã fix thành controller
-  shoppingListFromRecipe,
-  masterDataIngredients,
+  getSuggestions
 };

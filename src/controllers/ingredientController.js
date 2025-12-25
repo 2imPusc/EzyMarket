@@ -28,13 +28,21 @@ const ingredientController = {
         return res.status(409).json({ message });
       }
 
+      // Validate defaultExpireDays (optional but must be >= 1 if provided)
+      const ded = Number(defaultExpireDays);
+      if (defaultExpireDays !== undefined) {
+        if (Number.isNaN(ded) || ded < 1) {
+          return res.status(400).json({ message: 'defaultExpireDays must be a positive integer (>= 1).' });
+        }
+      }
+
       const ingredientData = {
         name: name.toLowerCase(),
         imageURL: imageURL || null,
         foodCategory,
-        creatorId: creatorId, 
+        creatorId: creatorId,
       };
-      if (defaultExpireDays !== undefined) ingredientData.defaultExpireDays = defaultExpireDays;
+      if (defaultExpireDays !== undefined) ingredientData.defaultExpireDays = ded;
 
       const newIngredient = new Ingredient(ingredientData);
 
@@ -200,28 +208,32 @@ const ingredientController = {
 
   getSuggestions: async (req, res) => {
     try {
-      // Dùng 'q' (query) làm tên tham số, đây là một quy ước phổ biến
-      const { q } = req.query;
+      const { q = '', limit = 10, scope = 'available' } = req.query;
       const { id: userId } = req.user;
 
-      if (!q) {
-        return res.status(200).json([]); // Trả về mảng rỗng nếu không có query
+      const text = String(q || '').trim();
+      const query = {};
+
+      if (text) {
+        query.$or = [
+          { name: { $regex: text, $options: 'i' } },
+        ];
       }
 
-      // Tạo biểu thức chính quy để tìm các tên BẮT ĐẦU BẰNG query (case-insensitive)
-      // Dấu '^' là mấu chốt cho hiệu năng và sự liên quan
-      const regex = new RegExp('^' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      // scope: 'system' => only system ingredients; 'available' => system + current user's
+      if (scope === 'system') {
+        query.creatorId = null;
+      } else {
+        query.creatorId = { $in: [null, userId] };
+      }
 
-      const ingredients = await Ingredient.find({
-        // Tìm trong cả nguyên liệu hệ thống và nguyên liệu cá nhân
-        creatorId: { $in: [userId, null] },
-        name: regex,
-      })
-      .select('_id name creatorId') // <-- CHỈ LẤY CÁC TRƯỜNG CẦN THIẾT
-      .limit(10) // <-- Giới hạn số lượng kết quả trả về để đảm bảo tốc độ
-      .sort({ name: 1 });
+      const ingredients = await Ingredient.find(query)
+        .select('_id name creatorId')
+        .sort({ name: 1 })
+        .limit(Math.min(parseInt(limit, 10) || 10, 50))
+        .lean();
 
-      res.status(200).json(ingredients);
+      res.status(200).json({ ingredients });
     } catch (err) {
       console.error('Get ingredient suggestions error:', err);
       res.status(500).json({ message: 'Internal server error' });

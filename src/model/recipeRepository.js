@@ -15,15 +15,14 @@ const recipeSchema = new mongoose.Schema(
     creatorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',  
-      // THAY ĐỔI required: true thành default: null
       default: null, 
       index: true
     },
     title: { type: String, required: true, trim: true, index: true },
     description: { type: String, trim: true },
     imageUrl: { type: String, default: null },
-    prepTime: { type: Number, default: 0, min: 0 }, // minutes
-    cookTime: { type: Number, default: 0, min: 0 }, // minutes
+    prepTime: { type: Number, default: 0, min: 0 },
+    cookTime: { type: Number, default: 0, min: 0 },
     servings: { type: Number, default: 1, min: 1 },
     directions: [{ type: String, trim: true }],
     ingredients: [recipeIngredientSchema],
@@ -42,6 +41,9 @@ recipeSchema.index(
   { title: 'text', description: 'text', 'ingredients.name': 'text' },
   { weights: { title: 10, description: 5, 'ingredients.name': 5 } }
 );
+
+// Optimize queries filtering by tagId
+recipeSchema.index({ tags: 1 });
 
 const Recipe = mongoose.model('Recipe', recipeSchema);
 export default Recipe;
