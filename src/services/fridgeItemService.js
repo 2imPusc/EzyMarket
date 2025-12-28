@@ -51,14 +51,28 @@ const fridgeItemService = {
     const userId = groupId ? null : (owner.userId ?? null);
 
     const query = {};
-    if (groupId) query.groupId = groupId;
-    else if (userId) query.userId = userId;
+    if (groupId) query.groupId = new mongoose.Types.ObjectId(groupId);
+    else if (userId) query.userId = new mongoose.Types.ObjectId(userId);
     else throw new Error('Owner (userId or groupId) is required');
 
     if (status) query.status = status;
 
-    // Basic search: nếu cần tìm theo tên ingredient -> dùng populate + regex via aggregation would be better.
-    // Here use simple lookup by foodId name not implemented; keep as filter placeholder.
+    // Apply ingredient name search
+    if (search && String(search).trim().length > 0) {
+      const regex = new RegExp(String(search).trim(), 'i');
+      const ingredientIds = await Ingredient.find({ name: regex })
+        .select('_id')
+        .lean()
+        .then(rows => rows.map(r => r._id));
+
+      if (ingredientIds.length === 0) {
+        return {
+          items: [],
+          pagination: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0 },
+        };
+      }
+      query.foodId = { $in: ingredientIds };
+    }
 
     const sortOption = {};
     const [sortField, sortOrder] = String(sortBy).split('_');
@@ -66,15 +80,16 @@ const fridgeItemService = {
 
     const skip = (Number(page) - 1) * Number(limit);
 
-    const items = await FridgeItem.find(query)
-      .populate('foodId', 'name imageURL')
-      .populate('unitId', 'name abbreviation')
-      .sort(sortOption)
-      .skip(skip)
-      .limit(Number(limit))
-      .lean();
-
-    const total = await FridgeItem.countDocuments(query);
+    const [items, total] = await Promise.all([
+      FridgeItem.find(query)
+        .populate('foodId', 'name imageURL')
+        .populate('unitId', 'name abbreviation')
+        .sort(sortOption)
+        .skip(skip)
+        .limit(Number(limit))
+        .lean(),
+      FridgeItem.countDocuments(query),
+    ]);
 
     return {
       items,
