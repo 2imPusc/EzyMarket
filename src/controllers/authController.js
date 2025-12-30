@@ -115,6 +115,7 @@ const authController = {
           userName: user.userName,
           role: user.role,
           email: user.email,
+          groupId: user.groupId,
         },
         token: token,
         refreshToken,
