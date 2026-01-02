@@ -62,7 +62,7 @@ router.use(authMiddleware.verifyToken);
  *               example: "2025-10-23"
  *             mealType:
  *               type: string
- *               enum: [breakfast, lunch, dinner, snack]
+ *               enum: [breakfast, lunch, dinner, snacks]
  *
  *     # 3. Input cho API thêm nhiều món (Bulk Add)
  *     MealItemBulkInput:
@@ -75,7 +75,7 @@ router.use(authMiddleware.verifyToken);
  *           example: "2025-10-23"
  *         mealType:
  *           type: string
- *           enum: [breakfast, lunch, dinner, snack]
+ *           enum: [breakfast, lunch, dinner, snacks]
  *         items:
  *           type: array
  *           items:
@@ -168,7 +168,7 @@ router.use(authMiddleware.verifyToken);
  *             properties:
  *               mealType:
  *                 type: string
- *                 enum: [breakfast, lunch, dinner, snack]
+ *                 enum: [breakfast, lunch, dinner, snacks]
  *               items:
  *                 type: array
  *                 items:

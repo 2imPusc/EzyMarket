@@ -1,6 +1,7 @@
 import MealPlan from '../model/mealPlanRepository.js';
 import Recipe from '../model/recipeRepository.js';
 import FridgeItem from '../model/fridgeItemRepository.js';
+import Ingredient from '../model/ingredientRepository.js';
 import mongoose from 'mongoose';
 
 const normalizeDate = (dateString) => {
@@ -27,6 +28,84 @@ export const getPlanByDateRange = async (userId, startDate, endDate) => {
   return plans;
 };
 
+const normalizeMealType = (type) => (type === 'snack' ? 'snacks' : type);
+
+const getMealIndex = (plan, inputType) => {
+  const t = normalizeMealType(inputType);
+  const idx = plan.meals.findIndex(m => m.mealType === t);
+  if (idx !== -1) return idx;
+  // Fallback for legacy data
+  return plan.meals.findIndex(m => m.mealType === 'snack');
+};
+
+// --- Inventory helpers ---
+const computeExpiryDate = async (ingredientId, purchaseDate = new Date()) => {
+  const ing = await Ingredient.findById(ingredientId).lean();
+  const days = ing?.defaultExpireDays ?? 7;
+  const expiry = new Date(purchaseDate);
+  expiry.setDate(expiry.getDate() + days);
+  return expiry;
+};
+
+const consumeFromFridge = async (userId, ingredientId, unitId, quantity) => {
+  let remaining = quantity;
+  const items = await FridgeItem.find({
+    userId,
+    foodId: ingredientId,
+    unitId,
+    status: 'in-stock'
+  }).sort({ expiryDate: 1 });
+
+  for (const fi of items) {
+    if (remaining <= 0) break;
+    const take = Math.min(fi.quantity, remaining);
+    fi.quantity -= take;
+    remaining -= take;
+    if (fi.quantity <= 0) fi.status = 'used';
+    await fi.save();
+  }
+  return remaining; // >0 means not enough stock; left as-is
+};
+
+const restockToFridge = async (userId, ingredientId, unitId, quantity) => {
+  const existing = await FridgeItem.findOne({
+    userId, foodId: ingredientId, unitId, status: 'in-stock'
+  }).sort({ expiryDate: -1 });
+
+  if (existing) {
+    existing.quantity += quantity;
+    await existing.save();
+  } else {
+    const expiryDate = await computeExpiryDate(ingredientId);
+    await FridgeItem.create({
+      userId,
+      foodId: ingredientId,
+      unitId,
+      quantity,
+      expiryDate,
+      status: 'in-stock'
+    });
+  }
+};
+
+const adjustInventoryForMealItem = async (userId, item, eatenNow) => {
+  if (item.itemType === 'ingredient') {
+    const qty = item.quantity;
+    if (eatenNow) await consumeFromFridge(userId, item.ingredientId, item.unitId, qty);
+    else await restockToFridge(userId, item.ingredientId, item.unitId, qty);
+  } else if (item.itemType === 'recipe') {
+    const recipe = await Recipe.findById(item.recipeId).lean();
+    if (!recipe) return;
+    for (const ing of recipe.ingredients) {
+      if (!ing.ingredientId || !ing.unitId) continue;
+      if (ing.optional) continue; // Optional ingredients not strictly consumed
+      const qty = (ing.quantity || 0) * (item.quantity || 1);
+      if (eatenNow) await consumeFromFridge(userId, ing.ingredientId, ing.unitId, qty);
+      else await restockToFridge(userId, ing.ingredientId, ing.unitId, qty);
+    }
+  }
+};
+
 export const addItemToMeal = async (userId, data) => {
   const { date, mealType, itemType, recipeId, ingredientId, unitId, quantity } = data;
   const targetDate = normalizeDate(date);
@@ -37,10 +116,9 @@ export const addItemToMeal = async (userId, data) => {
     await plan.save();
   }
 
-  const mealIndex = plan.meals.findIndex(m => m.mealType === mealType);
+  const mealIndex = getMealIndex(plan, mealType);
   if (mealIndex === -1) throw new Error('Invalid meal type');
 
-  // Chuẩn bị item data dựa trên type
   const newItem = {
     itemType,
     quantity: quantity || 1,
@@ -50,131 +128,182 @@ export const addItemToMeal = async (userId, data) => {
   if (itemType === 'recipe') {
     if (!recipeId) throw new Error('Recipe ID required');
     newItem.recipeId = recipeId;
-    // Recipe có thể không cần unit (mặc định là suất)
+
+    // Merge by recipeId
+    const existingIdx = plan.meals[mealIndex].items.findIndex(
+      i => i.itemType === 'recipe' && i.recipeId?.toString() === recipeId.toString()
+    );
+    if (existingIdx >= 0) {
+      plan.meals[mealIndex].items[existingIdx].quantity += newItem.quantity;
+    } else {
+      plan.meals[mealIndex].items.push(newItem);
+    }
   } else if (itemType === 'ingredient') {
     if (!ingredientId || !unitId) throw new Error('Ingredient ID and Unit ID required');
     newItem.ingredientId = ingredientId;
     newItem.unitId = unitId;
+
+    // Merge by ingredientId + unitId
+    const existingIdx = plan.meals[mealIndex].items.findIndex(
+      i => i.itemType === 'ingredient' &&
+           i.ingredientId?.toString() === ingredientId.toString() &&
+           i.unitId?.toString() === unitId.toString()
+    );
+    if (existingIdx >= 0) {
+      plan.meals[mealIndex].items[existingIdx].quantity += newItem.quantity;
+    } else {
+      plan.meals[mealIndex].items.push(newItem);
+    }
   } else {
     throw new Error('Invalid item type');
   }
 
-  plan.meals[mealIndex].items.push(newItem);
   await plan.save();
 
-  return plan.meals[mealIndex].items[plan.meals[mealIndex].items.length - 1];
+  // Return the merged/created item
+  const mealItems = plan.meals[mealIndex].items;
+  const lastItem = mealItems[mealItems.length - 1];
+  return lastItem;
 };
 
 export const addItemsToMealBulk = async (userId, { date, mealType, items }) => {
   const targetDate = normalizeDate(date);
 
-  // 1. Tìm hoặc tạo mới Document cho ngày đó
   let plan = await MealPlan.findOne({ userId, date: targetDate });
-
   if (!plan) {
     plan = new MealPlan({ userId, date: targetDate });
-    // Lưu lần đầu để hook pre-save chạy và tạo ra cấu trúc 4 bữa ăn (breakfast, lunch...)
     await plan.save();
   }
 
-  // 2. Tìm đúng mealType
-  const mealIndex = plan.meals.findIndex(m => m.mealType === mealType);
+  const mealIndex = getMealIndex(plan, mealType);
   if (mealIndex === -1) {
     throw new Error('Invalid meal type');
   }
 
-  // 3. Chuẩn bị danh sách item để push
-  const validItems = items.map(item => {
+  // Consolidate incoming items by key
+  const accMap = new Map();
+  for (const item of items) {
     const { itemType, recipeId, ingredientId, unitId, quantity } = item;
-    
-    const newItem = {
-      itemType,
-      quantity: quantity || 1,
-      isEaten: false
-    };
-
-    // Validate từng item
     if (itemType === 'recipe') {
       if (!recipeId) throw new Error('Recipe ID required for recipe item');
-      newItem.recipeId = recipeId;
+      const key = `r:${recipeId}`;
+      accMap.set(key, (accMap.get(key) || 0) + (quantity || 1));
     } else if (itemType === 'ingredient') {
       if (!ingredientId || !unitId) throw new Error('Ingredient ID and Unit ID required for ingredient item');
-      newItem.ingredientId = ingredientId;
-      newItem.unitId = unitId;
+      const key = `i:${ingredientId}:${unitId}`;
+      accMap.set(key, (accMap.get(key) || 0) + (quantity || 1));
     } else {
       throw new Error('Invalid item type');
     }
+  }
 
-    return newItem;
-  });
+  // Merge into existing meal items
+  for (const [key, qty] of accMap.entries()) {
+    if (key.startsWith('r:')) {
+      const recipeId = key.split(':')[1];
+      const idx = plan.meals[mealIndex].items.findIndex(
+        i => i.itemType === 'recipe' && i.recipeId?.toString() === recipeId.toString()
+      );
+      if (idx >= 0) {
+        plan.meals[mealIndex].items[idx].quantity += qty;
+      } else {
+        plan.meals[mealIndex].items.push({
+          itemType: 'recipe',
+          recipeId,
+          quantity: qty,
+          isEaten: false
+        });
+      }
+    } else {
+      const [, ingredientId, unitId] = key.split(':');
+      const idx = plan.meals[mealIndex].items.findIndex(
+        i => i.itemType === 'ingredient' &&
+             i.ingredientId?.toString() === ingredientId.toString() &&
+             i.unitId?.toString() === unitId.toString()
+      );
+      if (idx >= 0) {
+        plan.meals[mealIndex].items[idx].quantity += qty;
+      } else {
+        plan.meals[mealIndex].items.push({
+          itemType: 'ingredient',
+          ingredientId,
+          unitId,
+          quantity: qty,
+          isEaten: false
+        });
+      }
+    }
+  }
 
-  // 4. Push toàn bộ vào mảng items của bữa ăn đó
-  plan.meals[mealIndex].items.push(...validItems);
-  
-  // 5. Save một lần duy nhất (Atomic Operation)
   await plan.save();
 
-  // Trả về danh sách các item vừa thêm (để frontend update UI nếu cần)
-  // Lấy N phần tử cuối cùng của mảng
-  const addedItems = plan.meals[mealIndex].items.slice(-validItems.length);
-  return addedItems;
+  // Return the whole meal items (or the last N if preferred)
+  return plan.meals[mealIndex].items;
 };
 
 export const updateItem = async (userId, itemId, updateData) => {
-  // 1. Ép kiểu ObjectId cho itemId
   if (!mongoose.Types.ObjectId.isValid(itemId)) {
     throw new Error('Invalid Item ID');
   }
   const itemObjectId = new mongoose.Types.ObjectId(itemId);
 
-  // Nếu yêu cầu cập nhật unitId, phải kiểm tra xem item đó có phải là Ingredient không
-  if (updateData.unitId) {
-    const plan = await MealPlan.findOne({ userId, "meals.items._id": itemObjectId });
-    
-    if (plan) {
-      // Tìm item cụ thể trong mảng nested để check type
-      let targetItem = null;
-      for (const meal of plan.meals) {
-        targetItem = meal.items.find(item => item._id.equals(itemObjectId));
-        if (targetItem) break;
-      }
+  // Load plan and targetItem to check type and previous isEaten
+  const plan = await MealPlan.findOne({ userId, "meals.items._id": itemObjectId });
+  if (!plan) return null;
 
-      if (targetItem && targetItem.itemType === 'recipe') {
-        throw new Error('Cannot update unitId for a recipe item');
-      }
+  let targetItem = null;
+  let targetMealIndex = -1;
+  for (let mi = 0; mi < plan.meals.length; mi++) {
+    const found = plan.meals[mi].items.find(item => item._id.equals(itemObjectId));
+    if (found) {
+      targetItem = found;
+      targetMealIndex = mi;
+      break;
     }
   }
+  if (!targetItem) return null;
 
-  // 2. Tạo dynamic set data (LƯU Ý: Dùng quantity thay vì servings)
+  if (updateData.unitId && targetItem.itemType === 'recipe') {
+    throw new Error('Cannot update unitId for a recipe item');
+  }
+
+  const prevIsEaten = targetItem.isEaten;
+
   const setData = {};
-  
-  // --- SỬA TÊN TRƯỜNG TẠI ĐÂY ---
   if (updateData.quantity !== undefined) setData["meals.$[].items.$[inner].quantity"] = updateData.quantity;
-  // -------------------------------
-  
   if (updateData.isEaten !== undefined) setData["meals.$[].items.$[inner].isEaten"] = updateData.isEaten;
   if (updateData.note !== undefined) setData["meals.$[].items.$[inner].note"] = updateData.note;
   if (updateData.unitId !== undefined) setData["meals.$[].items.$[inner].unitId"] = updateData.unitId;
 
-  // Nếu không có trường nào hợp lệ để update, trả về null ngay
   if (Object.keys(setData).length === 0) {
-      console.log("No valid fields to update"); // Log để debug
-      return null;
+    return null;
   }
 
-  const result = await MealPlan.findOneAndUpdate(
-    { 
-      userId, 
-      "meals.items._id": itemObjectId // Dùng ObjectId đã ép kiểu để query chính xác
-    },
+  const updatedPlan = await MealPlan.findOneAndUpdate(
+    { userId, "meals.items._id": itemObjectId },
     { $set: setData },
-    { 
-      arrayFilters: [{ "inner._id": itemObjectId }], // Dùng ObjectId đã ép kiểu
-      new: true 
+    {
+      arrayFilters: [{ "inner._id": itemObjectId }],
+      new: true
     }
   );
 
-  return result;
+  // After update, fetch the updated item to compute inventory adjustment correctly
+  let updatedItem = null;
+  for (const meal of updatedPlan.meals) {
+    const found = meal.items.find(i => i._id.equals(itemObjectId));
+    if (found) {
+      updatedItem = found;
+      break;
+    }
+  }
+
+  if (updatedItem && updateData.isEaten !== undefined && updateData.isEaten !== prevIsEaten) {
+    // Adjust inventory only when eaten status toggles
+    await adjustInventoryForMealItem(userId, updatedItem, updateData.isEaten);
+  }
+
+  return updatedPlan;
 };
 
 // removeItem giữ nguyên

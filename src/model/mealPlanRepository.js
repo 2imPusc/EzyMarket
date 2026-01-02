@@ -54,7 +54,8 @@ const mealSectionSchema = new mongoose.Schema(
   {
     mealType: {
       type: String,
-      enum: ['breakfast', 'lunch', 'dinner', 'snack'],
+      // Accept both for compatibility, prefer "snacks"
+      enum: ['breakfast', 'lunch', 'dinner', 'snack', 'snacks'],
       required: true,
     },
     items: [mealItemSchema],
@@ -87,7 +88,8 @@ mealPlanSchema.index({ userId: 1, date: 1 }, { unique: true });
 
 mealPlanSchema.pre('save', function (next) {
   if (this.meals.length === 0) {
-    const types = ['breakfast', 'lunch', 'dinner', 'snack'];
+    // Prefer "snacks" going forward
+    const types = ['breakfast', 'lunch', 'dinner', 'snacks'];
     this.meals = types.map((type) => ({ mealType: type, items: [] }));
   }
   next();
