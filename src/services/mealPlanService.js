@@ -2,18 +2,19 @@ import MealPlan from '../model/mealPlanRepository.js';
 import Recipe from '../model/recipeRepository.js';
 import FridgeItem from '../model/fridgeItemRepository.js';
 import Ingredient from '../model/ingredientRepository.js';
+import { parseLocalDate } from '../utils/time.js';
 import mongoose from 'mongoose';
 
 const normalizeDate = (dateString) => {
-  const d = new Date(dateString);
-  d.setUTCHours(0, 0, 0, 0);
+  const d = parseLocalDate(dateString); // dùng parser local cho 'YYYY-MM-DD'
+  d.setHours(0, 0, 0, 0);
   return d;
 };
 
 export const getPlanByDateRange = async (userId, startDate, endDate) => {
   const start = normalizeDate(startDate);
   const end = normalizeDate(endDate);
-  end.setUTCHours(23, 59, 59, 999);
+  end.setHours(23, 59, 59, 999);
 
   const plans = await MealPlan.find({
     userId,
@@ -108,7 +109,7 @@ const adjustInventoryForMealItem = async (userId, item, eatenNow) => {
 
 export const addItemToMeal = async (userId, data) => {
   const { date, mealType, itemType, recipeId, ingredientId, unitId, quantity } = data;
-  const targetDate = normalizeDate(date);
+  const targetDate = normalizeDate(date); // giờ local thay vì UTC
 
   let plan = await MealPlan.findOne({ userId, date: targetDate });
   if (!plan) {

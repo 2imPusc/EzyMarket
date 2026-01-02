@@ -3,6 +3,7 @@ import Recipe from '../model/recipeRepository.js';
 import MealPlan from '../model/mealPlanRepository.js';
 import ShoppingList from '../model/shoppingRepository.js';
 import Group from '../model/groupRepository.js';
+import { startOfLocalDay, endOfLocalDay, localDayKey } from '../utils/time.js';
 
 const reportService = {
   /**
@@ -51,21 +52,11 @@ const reportService = {
     };
 
     // Meal Plan Statistics
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
+    const startOfWeek = startOfLocalDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()));
+    const startOfMonth = startOfLocalDay(new Date(now.getFullYear(), now.getMonth(), 1));
 
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const mealPlansThisWeek = await MealPlan.countDocuments({
-      userId,
-      date: { $gte: startOfWeek },
-    });
-
-    const mealPlansThisMonth = await MealPlan.countDocuments({
-      userId,
-      date: { $gte: startOfMonth },
-    });
+    const mealPlansThisWeek = await MealPlan.countDocuments({ userId, date: { $gte: startOfWeek } });
+    const mealPlansThisMonth = await MealPlan.countDocuments({ userId, date: { $gte: startOfMonth } });
 
     // Calculate completion rate
     const mealPlansWithItems = await MealPlan.find({
@@ -153,8 +144,8 @@ const reportService = {
     // Add date filter if provided
     if (startDate || endDate) {
       query.createdAt = {};
-      if (startDate) query.createdAt.$gte = new Date(startDate);
-      if (endDate) query.createdAt.$lte = new Date(endDate);
+      if (startDate) query.createdAt.$gte = startOfLocalDay(startDate);
+      if (endDate) query.createdAt.$lte = endOfLocalDay(endDate);
     } else {
       // Default to last 6 months
       const sixMonthsAgo = new Date();
@@ -179,18 +170,18 @@ const reportService = {
           totalSpending += amount;
           itemCount++;
 
-          // Group by time period
+          // Group by time period (dùng key theo local, bỏ UTC ISO)
           const date = list.createdAt;
           let periodKey;
 
           if (groupBy === 'day') {
-            periodKey = date.toISOString().split('T')[0];
+            periodKey = localDayKey(date);
           } else if (groupBy === 'week') {
             const weekStart = new Date(date);
             weekStart.setDate(date.getDate() - date.getDay());
-            periodKey = weekStart.toISOString().split('T')[0];
+            periodKey = localDayKey(weekStart);
           } else {
-            // month
+            // month theo local
             periodKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
           }
 
@@ -260,19 +251,17 @@ const reportService = {
    */
   async getMealPlanReport(userId, options) {
     const { startDate, endDate, period = 'month' } = options;
-
-    // Build date query
     const query = { userId };
-
     if (startDate || endDate) {
       query.date = {};
-      if (startDate) query.date.$gte = new Date(startDate);
-      if (endDate) query.date.$lte = new Date(endDate);
+      if (startDate) query.date.$gte = startOfLocalDay(startDate);
+      if (endDate) query.date.$lte = endOfLocalDay(endDate);
     } else {
-      // Default to current month
+      // Default to current month (cuối ngày local)
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      endOfMonth.setHours(23, 59, 59, 999);
       query.date = { $gte: startOfMonth, $lte: endOfMonth };
     }
 
@@ -546,28 +535,18 @@ const reportService = {
    */
   async getWasteAnalysis(userId, options) {
     const { startDate, endDate } = options;
-
-    // Get user's group if exists
-    const group = await Group.findOne({
-      members: { $elemMatch: { userId, status: 'active' } },
-    });
-    const groupId = group?._id || null;
-
     const query = {
       ...(groupId ? { groupId } : { userId, groupId: null }),
       status: { $in: ['expired', 'discarded'] },
     };
-
-    // Add date filter
     if (startDate || endDate) {
       query.updatedAt = {};
-      if (startDate) query.updatedAt.$gte = new Date(startDate);
-      if (endDate) query.updatedAt.$lte = new Date(endDate);
+      if (startDate) query.updatedAt.$gte = startOfLocalDay(startDate);
+      if (endDate) query.updatedAt.$lte = endOfLocalDay(endDate);
     } else {
-      // Default to last 3 months
       const threeMonthsAgo = new Date();
       threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-      query.updatedAt = { $gte: threeMonthsAgo };
+      query.updatedAt = { $gte: startOfLocalDay(threeMonthsAgo) };
     }
 
     const wastedItems = await FridgeItem.find(query)
