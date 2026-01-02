@@ -4,7 +4,6 @@ import Recipe from '../model/recipeRepository.js';
 import Ingredient from '../model/ingredientRepository.js';
 import Unit from '../model/unitRepository.js';
 import fridgeItemService from './fridgeItemService.js';
-import { startOfLocalDay, endOfLocalDay } from '../utils/time.js';
 
 const shoppingService = {
   createShoppingList: async (
@@ -26,15 +25,23 @@ const shoppingService = {
       };
 
       for (const planRequest of mealPlans) {
-        const start = startOfLocalDay(planRequest.date);
-        const end = endOfLocalDay(planRequest.date);
-        const plan = await MealPlan.findOne({ userId, date: { $gte: start, $lte: end } });
+        const date = new Date(planRequest.date);
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const plan = await MealPlan.findOne({
+          userId,
+          date: {
+            $gte: startOfDay,
+            $lte: endOfDay,
+          },
+        });
 
         if (!plan) continue;
 
-        const normalizeMealType = (t) => (t === 'snack' ? 'snacks' : t);
-        const typesToProcess =
-          (planRequest.mealTypes || ['breakfast', 'lunch', 'dinner', 'snacks']).map(normalizeMealType);
+        const typesToProcess = planRequest.mealTypes || ['breakfast', 'lunch', 'dinner', 'snack'];
 
         for (const section of plan.meals) {
           if (!typesToProcess.includes(section.mealType)) continue;

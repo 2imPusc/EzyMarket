@@ -1,7 +1,6 @@
 import FridgeItem from '../model/fridgeItemRepository.js';
 import Ingredient from '../model/ingredientRepository.js';
 import mongoose from 'mongoose';
-import { parseLocalDate } from '../utils/time.js';
 
 const fridgeItemService = {
   /**
@@ -21,15 +20,13 @@ const fridgeItemService = {
       throw new Error('foodId, unitId, and quantity are required');
     }
 
-    // Parse các mốc ngày theo local nếu được truyền dạng chuỗi
-    if (data.purchaseDate) data.purchaseDate = parseLocalDate(data.purchaseDate);
-    if (data.expiryDate) data.expiryDate = parseLocalDate(data.expiryDate);
-
-    // Nếu không có expiryDate, tự tính theo defaultExpireDays
+    // Nếu không có expiryDate, tự động tính toán từ ingredient.defaultExpireDays
     if (!data.expiryDate) {
       const ingredient = await Ingredient.findById(data.foodId);
-      if (!ingredient) throw new Error('Ingredient not found');
-      const purchaseDate = data.purchaseDate || new Date();
+      if (!ingredient) {
+        throw new Error('Ingredient not found');
+      }
+      const purchaseDate = data.purchaseDate ? new Date(data.purchaseDate) : new Date();
       const expiryDate = new Date(purchaseDate);
       expiryDate.setDate(purchaseDate.getDate() + (ingredient.defaultExpireDays || 0));
       data.expiryDate = expiryDate;
@@ -126,16 +123,13 @@ const fridgeItemService = {
 
     if (!isOwner) throw new Error('Forbidden');
 
-    // Chuẩn hóa ngày theo local nếu client gửi 'YYYY-MM-DD'
-    if (updateData.purchaseDate) updateData.purchaseDate = parseLocalDate(updateData.purchaseDate);
-    if (updateData.expiryDate) updateData.expiryDate = parseLocalDate(updateData.expiryDate);
-
-    // Recalc expiry nếu cần khi có purchaseDate mới mà không set expiryDate
+    // If updating expiry/purchase dates, keep previous logic if needed
     if (!updateData.expiryDate && (updateData.purchaseDate || updateData.foodId)) {
+      // If foodId changed or purchaseDate provided, optionally recalc expiry using ingredient default days
       const foodIdToUse = updateData.foodId ?? item.foodId;
       const ingredient = await Ingredient.findById(foodIdToUse);
       if (ingredient && updateData.purchaseDate) {
-        const purchaseDate = updateData.purchaseDate;
+        const purchaseDate = new Date(updateData.purchaseDate);
         const expiryDate = new Date(purchaseDate);
         expiryDate.setDate(purchaseDate.getDate() + (ingredient.defaultExpireDays || 0));
         updateData.expiryDate = expiryDate;
