@@ -26,16 +26,19 @@ router.use(authMiddleware.verifyToken);
  *           description: The auto-generated id of the item
  *         ingredientId:
  *           type: string
- *           description: The id of the ingredient (optional)
+ *           description: The id of the ingredient (optional, used for linking to fridge items)
  *         name:
  *           type: string
  *           description: Name of the item
  *         quantity:
  *           type: number
  *           description: Quantity of the item
+ *         unitId:
+ *           type: string
+ *           description: The id of the unit (ObjectId reference to Unit model). System will auto-populate unit name if provided.
  *         unit:
  *           type: string
- *           description: Unit of measurement
+ *           description: Unit of measurement (display name). System will auto-find unitId if only unit is provided.
  *         isPurchased:
  *           type: boolean
  *           description: Whether the item is purchased
@@ -91,6 +94,13 @@ router.use(authMiddleware.verifyToken);
  * /api/shopping-lists:
  *   post:
  *     summary: Create a new shopping list
+ *     description: |
+ *       Tạo shopping list mới. Có thể tạo từ meal plans hoặc items trực tiếp.
+ *       
+ *       **Normalize tự động:**
+ *       - Nếu items có `unitId` nhưng không có `unit`, hệ thống sẽ tự động lấy tên unit từ database.
+ *       - Nếu items có `unit` (string) nhưng không có `unitId`, hệ thống sẽ tự động tìm `unitId` tương ứng.
+ *       - Khi tạo từ meal plans, hệ thống sẽ tự động tính toán và normalize tất cả items.
  *     tags: [ShoppingLists]
  *     security:
  *       - bearerAuth: []
@@ -124,17 +134,26 @@ router.use(authMiddleware.verifyToken);
  *                         type: string
  *               items:
  *                 type: array
+ *                 description: Danh sách items tùy chọn. Nếu không có mealPlans, items này sẽ được sử dụng. Hệ thống sẽ tự động normalize unitId và unit.
  *                 items:
  *                   type: object
  *                   properties:
  *                     name:
  *                       type: string
+ *                       required: true
+ *                       description: Tên của item
  *                     quantity:
  *                       type: number
+ *                       description: Số lượng
+ *                     unitId:
+ *                       type: string
+ *                       description: ID của đơn vị (ObjectId). Nếu có unitId, hệ thống sẽ tự động lấy tên unit. Nếu không có, có thể dùng unit (string).
  *                     unit:
  *                       type: string
+ *                       description: Tên đơn vị (string). Nếu chỉ có unit, hệ thống sẽ tự động tìm unitId tương ứng. Có thể truyền unitId hoặc unit hoặc cả hai.
  *                     ingredientId:
  *                       type: string
+ *                       description: ID của ingredient (ObjectId). Cần thiết nếu muốn chuyển item vào tủ lạnh sau khi checkout.
  *     responses:
  *       201:
  *         description: The shopping list was successfully created
@@ -209,7 +228,7 @@ router.get(
  *         description: The shopping list id
  *     responses:
  *       200:
- *         description: The shopping list description
+ *         description: The shopping list with populated data. Items will include populated ingredientId (name, imageURL) and unitId (name, abbreviation).
  *         content:
  *           application/json:
  *             schema:
@@ -226,7 +245,12 @@ router.get('/:id', shoppingController.getShoppingListById);
  * /api/shopping-lists/{id}/checkout:
  *   post:
  *     summary: Hoàn thành shopping list - Cập nhật thông tin đã mua và chuyển vào tủ lạnh
- *     description: Cập nhật thông tin các nguyên liệu đã mua (giá, số lượng, hạn sử dụng), đổi status sang completed và tự động thêm vào fridge-items. Chỉ cần gọi API này 1 lần duy nhất.
+ *     description: |
+ *       Cập nhật thông tin các nguyên liệu đã mua (giá, số lượng, hạn sử dụng), đổi status sang completed và tự động thêm vào fridge-items. 
+ *       Chỉ cần gọi API này 1 lần duy nhất.
+ *       
+ *       **Lưu ý:** Chỉ những items có `isPurchased = true`, `ingredientId` và `unitId` mới được chuyển vào tủ lạnh. 
+ *       Các items thiếu `ingredientId` hoặc `unitId` sẽ bị bỏ qua.
  *     tags: [ShoppingLists]
  *     security:
  *       - bearerAuth: []
@@ -371,12 +395,19 @@ router.delete('/:id', shoppingController.deleteShoppingList);
  *             properties:
  *               name:
  *                 type: string
+ *                 description: Tên của item
  *               quantity:
  *                 type: number
+ *                 description: Số lượng
+ *               unitId:
+ *                 type: string
+ *                 description: ID của đơn vị (ObjectId). Nếu có unitId, hệ thống sẽ tự động lấy tên unit. Nếu không có, có thể dùng unit (string).
  *               unit:
  *                 type: string
+ *                 description: Tên đơn vị (string). Nếu chỉ có unit, hệ thống sẽ tự động tìm unitId tương ứng. Có thể truyền unitId hoặc unit hoặc cả hai.
  *               ingredientId:
  *                 type: string
+ *                 description: ID của ingredient (ObjectId). Cần thiết nếu muốn chuyển item vào tủ lạnh sau khi checkout.
  *     responses:
  *       200:
  *         description: The item was added
@@ -421,12 +452,19 @@ router.post('/:id/items', shoppingController.addItem);
  *             properties:
  *               name:
  *                 type: string
+ *                 description: Tên của item
  *               quantity:
  *                 type: number
+ *                 description: Số lượng
+ *               unitId:
+ *                 type: string
+ *                 description: ID của đơn vị (ObjectId). Nếu cập nhật unitId, hệ thống sẽ tự động cập nhật tên unit tương ứng.
  *               unit:
  *                 type: string
+ *                 description: Tên đơn vị (string). Nếu chỉ cập nhật unit, hệ thống sẽ tự động tìm và cập nhật unitId tương ứng.
  *               isPurchased:
  *                 type: boolean
+ *                 description: Đánh dấu item đã được mua
  *     responses:
  *       200:
  *         description: The item was updated

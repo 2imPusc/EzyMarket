@@ -17,6 +17,12 @@ const shoppingItemSchema = new mongoose.Schema({
   unitId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Unit',
+    default: null,
+  },
+  unit: {
+    type: String,
+    trim: true,
+    default: '',
   },
   isPurchased: {
     type: Boolean,

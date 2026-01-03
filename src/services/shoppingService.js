@@ -10,7 +10,44 @@ const shoppingService = {
     userId,
     { groupId, title, description, items = [], mealPlans = [] }
   ) => {
-    let finalItems = [...items];
+    // Helper function để tìm Unit từ unitText (tên đơn vị)
+    const findUnitByText = async (unitText) => {
+      if (!unitText || !unitText.trim()) return null;
+      const normalizedText = unitText.trim().toLowerCase();
+      return await Unit.findOne({
+        $or: [
+          { name: normalizedText },
+          { abbreviation: { $regex: new RegExp(`^${normalizedText}$`, 'i') } },
+        ],
+      });
+    };
+
+    // Helper function để normalize items: đảm bảo có cả unitId và unit
+    const normalizeItem = async (item) => {
+      const normalized = { ...item };
+
+      // Nếu có unitId nhưng chưa có unit, lấy tên từ Unit
+      if (normalized.unitId && !normalized.unit) {
+        const u = await Unit.findById(normalized.unitId);
+        if (u) normalized.unit = u.name;
+      }
+      // Nếu có unit (string) nhưng chưa có unitId, tìm unitId
+      else if (normalized.unit && !normalized.unitId) {
+        const foundUnit = await findUnitByText(normalized.unit);
+        if (foundUnit) {
+          normalized.unitId = foundUnit._id;
+          normalized.unit = foundUnit.name; // Chuẩn hóa về tên trong DB
+        }
+      }
+
+      return normalized;
+    };
+
+    // Normalize các items được truyền trực tiếp
+    let finalItems = [];
+    for (const item of items) {
+      finalItems.push(await normalizeItem(item));
+    }
 
     if (mealPlans && mealPlans.length > 0) {
       const ingredientMap = new Map();
@@ -54,20 +91,22 @@ const shoppingService = {
                 if (ing) name = ing.name;
               }
 
+              let unitId = mealItem.unitId || null;
               let unitName = '';
-              if (mealItem.unitId) {
-                const u = await Unit.findById(mealItem.unitId);
+              if (unitId) {
+                const u = await Unit.findById(unitId);
                 if (u) unitName = u.name;
               }
 
               const key = mealItem.ingredientId
-                ? `${mealItem.ingredientId}_${mealItem.unitId}`
+                ? `${mealItem.ingredientId}_${unitId || 'no-unit'}`
                 : `${name}_${unitName}`;
 
               addToMap(key, {
-                ingredientId: mealItem.ingredientId,
+                ingredientId: mealItem.ingredientId || null,
                 name: name,
                 quantity: mealItem.quantity,
+                unitId: unitId,
                 unit: unitName,
                 isPurchased: false,
               });
@@ -80,15 +119,29 @@ const shoppingService = {
               for (const rItem of recipe.ingredients) {
                 const quantity = rItem.quantity * servingsRatio;
 
+                // Tìm unitId từ unitText hoặc dùng unitId có sẵn
+                let unitId = rItem.unitId || null;
+                let unitText = rItem.unitText || '';
+
+                // Nếu không có unitId, thử tìm từ unitText
+                if (!unitId && unitText) {
+                  const foundUnit = await findUnitByText(unitText);
+                  if (foundUnit) {
+                    unitId = foundUnit._id;
+                    unitText = foundUnit.name; // Chuẩn hóa về tên trong DB
+                  }
+                }
+
                 const key = rItem.ingredientId
-                  ? `${rItem.ingredientId}_${rItem.unitText}`
-                  : `${rItem.name}_${rItem.unitText}`;
+                  ? `${rItem.ingredientId}_${unitId || 'no-unit'}`
+                  : `${rItem.name}_${unitText}`;
 
                 addToMap(key, {
-                  ingredientId: rItem.ingredientId,
+                  ingredientId: rItem.ingredientId || null,
                   name: rItem.name,
                   quantity: quantity,
-                  unit: rItem.unitText,
+                  unitId: unitId,
+                  unit: unitText,
                   isPurchased: false,
                 });
               }
@@ -119,7 +172,8 @@ const shoppingService = {
   getShoppingListById: async (id) => {
     return await ShoppingList.findById(id)
       .populate('creatorId', 'userName avatar')
-      .populate('items.ingredientId', 'name imageURL');
+      .populate('items.ingredientId', 'name imageURL')
+      .populate('items.unitId', 'name abbreviation');
   },
 
   checkoutShoppingList: async (id, checkoutItems) => {
@@ -195,8 +249,35 @@ const shoppingService = {
 
     if (updateData.name !== undefined) item.name = updateData.name;
     if (updateData.quantity !== undefined) item.quantity = updateData.quantity;
-    if (updateData.unit !== undefined) item.unit = updateData.unit;
     if (updateData.isPurchased !== undefined) item.isPurchased = updateData.isPurchased;
+
+    // Cập nhật unitId và unit một cách nhất quán
+    if (updateData.unitId !== undefined) {
+      item.unitId = updateData.unitId;
+      // Nếu có unitId, tự động cập nhật unit name
+      if (updateData.unitId) {
+        const u = await Unit.findById(updateData.unitId);
+        if (u) item.unit = u.name;
+      } else {
+        item.unit = updateData.unit || '';
+      }
+    } else if (updateData.unit !== undefined) {
+      // Nếu chỉ cập nhật unit (string), thử tìm unitId tương ứng
+      item.unit = updateData.unit;
+      if (updateData.unit && updateData.unit.trim()) {
+        const normalizedText = updateData.unit.trim().toLowerCase();
+        const foundUnit = await Unit.findOne({
+          $or: [
+            { name: normalizedText },
+            { abbreviation: { $regex: new RegExp(`^${normalizedText}$`, 'i') } },
+          ],
+        });
+        if (foundUnit) {
+          item.unitId = foundUnit._id;
+          item.unit = foundUnit.name; // Chuẩn hóa về tên trong DB
+        }
+      }
+    }
 
     return await list.save();
   },
