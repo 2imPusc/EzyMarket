@@ -2,7 +2,6 @@ import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 const fridgeItemSchema = new Schema({
-  // owner: có thể là user hoặc group (ít nhất 1 trong 2 phải có)
   userId: {
     type: Schema.Types.ObjectId,
     ref: 'User',
@@ -16,17 +15,36 @@ const fridgeItemSchema = new Schema({
     default: null,
   },
 
-  // Liên kết đến model Ingredient
+  // 🔥 THÊM: Loại item (ingredient hoặc recipe)
+  itemType: {
+    type: String,
+    enum: ['ingredient', 'recipe'],
+    default: 'ingredient',
+    required: true,
+  },
+
+  // Cho ingredient
   foodId: {
     type: Schema.Types.ObjectId,
     ref: 'Ingredient',
-    required: true,
+    default: null,
   },
-  // Liên kết đến model Unit
+
+  // 🔥 THÊM: Cho recipe (món đã nấu)
+  recipeId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Recipe',
+    default: null,
+  },
+
   unitId: {
     type: Schema.Types.ObjectId,
     ref: 'Unit',
-    required: true,
+    required: function() {
+      // 🔥 Chỉ bắt buộc unitId cho ingredient, không bắt buộc cho recipe
+      return this.itemType === 'ingredient';
+    },
+    default: null,
   },
   quantity: {
     type: Number,
@@ -49,9 +67,16 @@ const fridgeItemSchema = new Schema({
   },
   status: {
     type: String,
-    enum: ['in-stock', 'used', 'expired', 'discarded'],
+    enum: ['in-stock', 'consumed', 'expired', 'discarded'],
     default: 'in-stock',
   },
+
+  // 🔥 THÊM: Ghi lại nguồn gốc (nấu từ recipe nào, khi nào)
+  cookedFrom: {
+    recipeId: { type: Schema.Types.ObjectId, ref: 'Recipe', default: null },
+    cookedAt: { type: Date, default: null },
+  },
+
   addedAt: {
     type: Date,
     default: Date.now,
@@ -60,10 +85,20 @@ const fridgeItemSchema = new Schema({
   timestamps: true,
 });
 
-// Validator: bắt buộc có ít nhất userId hoặc groupId
+// Cập nhật validator
 fridgeItemSchema.pre('validate', function(next) {
   if (!this.userId && !this.groupId) {
-    return next(new Error('Either userId or groupId is required for a fridge item'));
+    return next(new Error('Either userId or groupId is required'));
+  }
+  if (this.itemType === 'ingredient' && !this.foodId) {
+    return next(new Error('foodId is required for ingredient type'));
+  }
+  if (this.itemType === 'recipe' && !this.recipeId) {
+    return next(new Error('recipeId is required for recipe type'));
+  }
+  // 🔥 Bỏ validate unitId cho recipe
+  if (this.itemType === 'ingredient' && !this.unitId) {
+    return next(new Error('unitId is required for ingredient type'));
   }
   next();
 });

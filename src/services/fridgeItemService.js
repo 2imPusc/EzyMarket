@@ -46,7 +46,7 @@ const fridgeItemService = {
    * Lấy danh sách items theo owner = { userId, groupId } và các options (pagination, sort, status, search).
    */
   getFridgeItems: async (owner = {}, options = {}) => {
-    const { page = 1, limit = 20, sortBy = 'expiryDate_asc', status, search } = options;
+    const { page = 1, limit = 20, sortBy = 'expiryDate_asc', status, search, itemType } = options;
     const groupId = owner.groupId ?? null;
     const userId = groupId ? null : (owner.userId ?? null);
 
@@ -77,6 +77,11 @@ const fridgeItemService = {
       query.foodId = { $in: ingredientIds };
     }
 
+    // 🔥 THÊM: Lọc theo itemType
+    if (itemType) {
+      query.itemType = itemType;
+    }
+
     const sortOption = {};
     const [sortField, sortOrder] = String(sortBy).split('_');
     sortOption[sortField || 'expiryDate'] = sortOrder === 'desc' ? -1 : 1;
@@ -86,6 +91,7 @@ const fridgeItemService = {
     const [items, total] = await Promise.all([
       FridgeItem.find(query)
         .populate('foodId', 'name imageURL')
+        .populate('recipeId', 'title imageUrl')  // 🔥 THÊM populate recipe
         .populate('unitId', 'name abbreviation')
         .sort(sortOption)
         .skip(skip)
