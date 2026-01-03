@@ -70,6 +70,15 @@ router.use(authMiddleware.verifyToken);
  *                       type: number
  *                     totalSpending:
  *                       type: number
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
  */
 router.get('/overview', reportController.overview);
 
@@ -104,6 +113,60 @@ router.get('/overview', reportController.overview);
  *     responses:
  *       200:
  *         description: Spending analysis data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalSpending:
+ *                       type: number
+ *                       description: Tổng chi tiêu
+ *                     averageSpending:
+ *                       type: number
+ *                       description: Chi tiêu trung bình
+ *                     itemCount:
+ *                       type: number
+ *                       description: Tổng số items đã mua
+ *                     periodsCount:
+ *                       type: number
+ *                       description: Số chu kỳ thời gian
+ *                     changePercentage:
+ *                       type: number
+ *                       description: Phần trăm thay đổi so với chu kỳ trước
+ *                 spendingTimeSeries:
+ *                   type: array
+ *                   description: Chi tiêu theo thời gian
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       period:
+ *                         type: string
+ *                       amount:
+ *                         type: number
+ *                 spendingByCategories:
+ *                   type: array
+ *                   description: Chi tiêu theo danh mục
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       category:
+ *                         type: string
+ *                       amount:
+ *                         type: number
+ *                       percentage:
+ *                         type: number
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
  */
 router.get('/shopping', reportController.spendingReport);
 
@@ -135,6 +198,73 @@ router.get('/shopping', reportController.spendingReport);
  *     responses:
  *       200:
  *         description: Meal planning summary data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalDays:
+ *                       type: number
+ *                       description: Tổng số ngày có meal plan
+ *                     totalMeals:
+ *                       type: number
+ *                       description: Tổng số bữa ăn
+ *                     eatenMeals:
+ *                       type: number
+ *                       description: Số bữa đã ăn
+ *                     skippedDays:
+ *                       type: number
+ *                       description: Số ngày bỏ qua
+ *                     completionRate:
+ *                       type: number
+ *                       description: Tỷ lệ hoàn thành (%)
+ *                 mealTypeStats:
+ *                   type: array
+ *                   description: Thống kê theo loại bữa ăn
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       mealType:
+ *                         type: string
+ *                         enum: [breakfast, lunch, dinner, snack]
+ *                       total:
+ *                         type: number
+ *                       eaten:
+ *                         type: number
+ *                       completionRate:
+ *                         type: number
+ *                 topRecipes:
+ *                   type: array
+ *                   description: Top recipes được dùng nhiều nhất
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       recipe:
+ *                         type: string
+ *                       count:
+ *                         type: number
+ *                 topIngredients:
+ *                   type: array
+ *                   description: Top ingredients được dùng nhiều nhất
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       ingredient:
+ *                         type: string
+ *                       count:
+ *                         type: number
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
  */
 router.get('/meals', reportController.mealPlanReport);
 
@@ -161,6 +291,58 @@ router.get('/meals', reportController.mealPlanReport);
  *     responses:
  *       200:
  *         description: Recipe usage statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalRecipes:
+ *                       type: number
+ *                       description: Tổng số recipes
+ *                     usedRecipes:
+ *                       type: number
+ *                       description: Số recipes đã sử dụng
+ *                     unusedRecipes:
+ *                       type: number
+ *                       description: Số recipes chưa sử dụng
+ *                 topRecipes:
+ *                   type: array
+ *                   description: Top recipes được dùng nhiều nhất
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       recipeId:
+ *                         type: string
+ *                       title:
+ *                         type: string
+ *                       count:
+ *                         type: number
+ *                       tags:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                 unusedRecipes:
+ *                   type: array
+ *                   description: Recipes chưa bao giờ dùng
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       recipeId:
+ *                         type: string
+ *                       title:
+ *                         type: string
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
  */
 router.get('/recipe-usage', reportController.recipeUsageStats);
 
@@ -182,6 +364,76 @@ router.get('/recipe-usage', reportController.recipeUsageStats);
  *     responses:
  *       200:
  *         description: Expiry tracking data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 expiringSoon:
+ *                   type: array
+ *                   description: Danh sách thực phẩm sắp hết hạn
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       food:
+ *                         type: object
+ *                         description: Ingredient object (populated)
+ *                       quantity:
+ *                         type: number
+ *                       unit:
+ *                         type: object
+ *                         description: Unit object (populated)
+ *                       expiryDate:
+ *                         type: string
+ *                         format: date-time
+ *                       daysUntilExpiry:
+ *                         type: number
+ *                       price:
+ *                         type: number
+ *                 expired:
+ *                   type: array
+ *                   description: Danh sách thực phẩm đã hết hạn
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       food:
+ *                         type: object
+ *                       quantity:
+ *                         type: number
+ *                       unit:
+ *                         type: object
+ *                       expiryDate:
+ *                         type: string
+ *                         format: date-time
+ *                       daysExpired:
+ *                         type: number
+ *                       price:
+ *                         type: number
+ *                       status:
+ *                         type: string
+ *                         enum: [in-stock, expired]
+ *                 wasteStats:
+ *                   type: object
+ *                   properties:
+ *                     wastedItems:
+ *                       type: number
+ *                     wasteValue:
+ *                       type: number
+ *                     wastePercentage:
+ *                       type: number
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
  */
 router.get('/fridge/expiry-tracking', reportController.expiryTracking);
 
@@ -208,6 +460,65 @@ router.get('/fridge/expiry-tracking', reportController.expiryTracking);
  *     responses:
  *       200:
  *         description: Food waste analysis data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalWastedItems:
+ *                       type: number
+ *                       description: Tổng số items bị lãng phí
+ *                     totalWasteValue:
+ *                       type: number
+ *                       description: Tổng giá trị bị lãng phí
+ *                 topWastedFoods:
+ *                   type: array
+ *                   description: Top 10 thực phẩm bị lãng phí nhiều nhất
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name:
+ *                         type: string
+ *                       count:
+ *                         type: number
+ *                       totalValue:
+ *                         type: number
+ *                       category:
+ *                         type: string
+ *                 wasteByReason:
+ *                   type: object
+ *                   properties:
+ *                     expired:
+ *                       type: number
+ *                       description: Số items hết hạn
+ *                     discarded:
+ *                       type: number
+ *                       description: Số items bị vứt bỏ
+ *                 wasteTrend:
+ *                   type: array
+ *                   description: Xu hướng lãng phí theo tháng
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       month:
+ *                         type: string
+ *                         format: YYYY-MM
+ *                       count:
+ *                         type: number
+ *                       value:
+ *                         type: number
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
  */
 router.get('/fridge/waste-analysis', reportController.wasteAnalysis);
 
