@@ -51,9 +51,9 @@ const fridgeItemService = {
     const userId = groupId ? null : (owner.userId ?? null);
 
     const query = {
-      quantity: { $gt: 0 }
+      quantity: { $gt: 0 },
     };
-    
+
     if (groupId) query.groupId = new mongoose.Types.ObjectId(groupId);
     else if (userId) query.userId = new mongoose.Types.ObjectId(userId);
     else throw new Error('Owner (userId or groupId) is required');
@@ -66,7 +66,7 @@ const fridgeItemService = {
       const ingredientIds = await Ingredient.find({ name: regex })
         .select('_id')
         .lean()
-        .then(rows => rows.map(r => r._id));
+        .then((rows) => rows.map((r) => r._id));
 
       if (ingredientIds.length === 0) {
         return {
@@ -114,8 +114,9 @@ const fridgeItemService = {
     if (!item) throw new Error('Item not found');
 
     // Normalize user id and group id
-    const uid = (user && (user.id || user._id)) ? String(user.id ?? user._id) : null;
-    const uGroup = (user && (user.groupId || user.group_id)) ? String(user.groupId ?? user.group_id) : null;
+    const uid = user && (user.id || user._id) ? String(user.id ?? user._id) : null;
+    const uGroup =
+      user && (user.groupId || user.group_id) ? String(user.groupId ?? user.group_id) : null;
 
     const ownerUserId = item.userId ? String(item.userId) : null;
     const ownerGroupId = item.groupId ? String(item.groupId) : null;
@@ -139,6 +140,33 @@ const fridgeItemService = {
       }
     }
 
+    // Tự động tính lại giá tiền khi số lượng thay đổi
+    // Chỉ tính lại khi: có cập nhật quantity, quantity giảm, và item có price > 0
+    // Lưu ý: Nếu người dùng cập nhật price cùng lúc, ưu tiên giá do người dùng nhậpgit
+    if (
+      updateData.quantity !== undefined &&
+      typeof updateData.quantity === 'number' &&
+      updateData.price === undefined // Chỉ tự động tính nếu người dùng không cập nhật price
+    ) {
+      const oldQuantity = item.quantity || 0;
+      const newQuantity = updateData.quantity;
+      const oldPrice = item.price || 0;
+
+      // Nếu số lượng về 0, giá tiền cũng về 0
+      if (newQuantity === 0) {
+        updateData.price = 0;
+      }
+      // Nếu số lượng giảm và có giá tiền ban đầu, tính lại giá theo tỷ lệ
+      else if (newQuantity < oldQuantity && oldQuantity > 0 && oldPrice > 0) {
+        // Tính giá đơn vị: giá cũ / số lượng cũ
+        const unitPrice = oldPrice / oldQuantity;
+        // Tính giá mới: giá đơn vị * số lượng mới
+        const newPrice = unitPrice * newQuantity;
+        updateData.price = Math.round(newPrice * 100) / 100; // Làm tròn 2 chữ số thập phân
+      }
+      // Nếu số lượng tăng, giữ nguyên giá cũ (người dùng có thể tự cập nhật price nếu muốn)
+    }
+
     const updated = await FridgeItem.findByIdAndUpdate(itemId, updateData, { new: true }).lean();
     return updated;
   },
@@ -150,8 +178,9 @@ const fridgeItemService = {
     const item = await FridgeItem.findById(itemId);
     if (!item) throw new Error('Item not found');
 
-    const uid = (user && (user.id || user._id)) ? String(user.id ?? user._id) : null;
-    const uGroup = (user && (user.groupId || user.group_id)) ? String(user.groupId ?? user.group_id) : null;
+    const uid = user && (user.id || user._id) ? String(user.id ?? user._id) : null;
+    const uGroup =
+      user && (user.groupId || user.group_id) ? String(user.groupId ?? user.group_id) : null;
 
     const ownerUserId = item.userId ? String(item.userId) : null;
     const ownerGroupId = item.groupId ? String(item.groupId) : null;
