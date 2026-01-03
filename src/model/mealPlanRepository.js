@@ -1,5 +1,14 @@
 import mongoose from 'mongoose';
 
+/**
+ * Status flow:
+ * planned → cooked → eaten (for recipes that need cooking)
+ * planned → eaten (for ingredients/ready-to-eat items)
+ * planned → consumed (auto-reconciled at end of day)
+ * planned → skipped (not available in fridge at reconcile time)
+ */
+const MEAL_ITEM_STATUS = ['planned', 'cooked', 'eaten', 'consumed', 'skipped'];
+
 const mealItemSchema = new mongoose.Schema(
   {
     // Phân loại rõ ràng
@@ -32,7 +41,27 @@ const mealItemSchema = new mongoose.Schema(
       ref: 'Unit',
     },
 
-    isEaten: { type: Boolean, default: false },
+    // ====== NEW FIELDS ======
+    // Status tracking cho workflow mới
+    status: {
+      type: String,
+      enum: MEAL_ITEM_STATUS,
+      default: 'planned',
+    },
+
+    // Link đến món đã nấu trong fridge (sau khi cook recipe)
+    cookedFridgeItemId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FridgeItem',
+    },
+
+    // Timestamps cho tracking
+    cookedAt: { type: Date },
+    eatenAt: { type: Date },
+    consumedAt: { type: Date },
+
+    // ====== EXISTING FIELDS ======
+    isEaten: { type: Boolean, default: false }, // Backward compatibility
     note: { type: String, trim: true },
   },
   { timestamps: true }
@@ -50,11 +79,25 @@ mealItemSchema.pre('validate', function (next) {
   }
 });
 
+// Sync isEaten với status để backward compatibility
+mealItemSchema.pre('save', function (next) {
+  if (this.isModified('status')) {
+    this.isEaten = ['eaten', 'consumed'].includes(this.status);
+  }
+  if (this.isModified('isEaten') && !this.isModified('status')) {
+    // Legacy update via isEaten
+    if (this.isEaten && this.status === 'planned') {
+      this.status = 'eaten';
+      this.eatenAt = new Date();
+    }
+  }
+  next();
+});
+
 const mealSectionSchema = new mongoose.Schema(
   {
     mealType: {
       type: String,
-      // Accept both for compatibility, prefer "snacks"
       enum: ['breakfast', 'lunch', 'dinner', 'snack', 'snacks'],
       required: true,
     },
@@ -78,8 +121,14 @@ const mealPlanSchema = new mongoose.Schema(
     },
     summary: {
       totalCalories: { type: Number, default: 0 },
+      totalPlanned: { type: Number, default: 0 },
+      totalCooked: { type: Number, default: 0 },
+      totalEaten: { type: Number, default: 0 },
       isFullyCompleted: { type: Boolean, default: false },
     },
+    // Track if this plan has been reconciled
+    isReconciled: { type: Boolean, default: false },
+    reconciledAt: { type: Date },
   },
   { timestamps: true }
 );
@@ -88,10 +137,24 @@ mealPlanSchema.index({ userId: 1, date: 1 }, { unique: true });
 
 mealPlanSchema.pre('save', function (next) {
   if (this.meals.length === 0) {
-    // Prefer "snacks" going forward
     const types = ['breakfast', 'lunch', 'dinner', 'snacks'];
     this.meals = types.map((type) => ({ mealType: type, items: [] }));
   }
+
+  // Update summary counts
+  let totalPlanned = 0, totalCooked = 0, totalEaten = 0;
+  for (const meal of this.meals) {
+    for (const item of meal.items) {
+      if (item.status === 'planned') totalPlanned++;
+      if (item.status === 'cooked') totalCooked++;
+      if (['eaten', 'consumed'].includes(item.status)) totalEaten++;
+    }
+  }
+  this.summary.totalPlanned = totalPlanned;
+  this.summary.totalCooked = totalCooked;
+  this.summary.totalEaten = totalEaten;
+  this.summary.isFullyCompleted = totalPlanned === 0 && totalCooked === 0;
+
   next();
 });
 

@@ -1,5 +1,9 @@
 import * as mealPlanService from '../services/mealPlanService.js';
 
+// ===============================================
+//          EXISTING ENDPOINTS (updated)
+// ===============================================
+
 // GET /api/meal-plans?startDate=...&endDate=...
 const getPlan = async (req, res) => {
   try {
@@ -17,70 +21,195 @@ const getPlan = async (req, res) => {
   }
 };
 
-// POST /api/meal-plans/items
+// POST /api/meal-plans/items - Thêm item (KHÔNG trừ inventory)
 const addItem = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
-    const groupId = req.user.groupId || req.user.group_id || null; // Lấy groupId từ user
-
-    const newItem = await mealPlanService.addItemToMeal(userId, { 
-      ...req.body, 
-      groupId // Truyền groupId vào service
+    const newItem = await mealPlanService.addItemToMeal(userId, req.body);
+    res.status(201).json({ 
+      message: 'Item added to plan', 
+      item: newItem,
+      note: 'Inventory will be consumed when you cook or mark as eaten'
     });
-    res.status(201).json({ message: 'Item added', item: newItem });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
-// POST /api/meal-plans/items/bulk
+// POST /api/meal-plans/items/bulk - Thêm nhiều items (KHÔNG trừ inventory)
 const addItemsBulk = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
-    const groupId = req.user.groupId || req.user.group_id || null;
-    // items là một mảng []
     const { date, mealType, items } = req.body;
 
     if (!date || !mealType || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Date, mealType, and a list of items are required' });
     }
 
-    const addedItems = await mealPlanService.addItemsToMealBulk(userId, { 
-      ...req.body, 
-      groupId 
-    });
-      
-    res.status(201).json({ 
-      message: `${addedItems.length} items added successfully`, 
-      items: addedItems 
+    const addedItems = await mealPlanService.addItemsToMealBulk(userId, req.body);
+    res.status(201).json({
+      message: `${addedItems.length} items added to plan`,
+      items: addedItems,
+      note: 'Inventory will be consumed when you cook or mark as eaten'
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
-// Helper để parse fridgeIds từ query string
-const parseFridgeIds = (queryParam) => {
-  if (!queryParam) return null;
-  // Nếu là mảng (gửi dạng ?fridgeIds=1&fridgeIds=2) thì giữ nguyên
-  if (Array.isArray(queryParam)) return queryParam;
-  // Nếu là string (gửi dạng ?fridgeIds=1,2) thì split
-  return queryParam.split(',').map(id => id.trim());
+// PATCH /api/meal-plans/items/:itemId - Update item
+const updateItem = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    const { itemId } = req.params;
+
+    const updatedPlan = await mealPlanService.updateItem(userId, itemId, req.body);
+
+    if (!updatedPlan) {
+      return res.status(404).json({ message: 'Meal item not found or no changes made' });
+    }
+
+    res.json({ message: 'Item updated', plan: updatedPlan });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
 };
 
-// GET /api/meal-plans/recipes/search
+// DELETE /api/meal-plans/items/:itemId - Remove item
+const removeItem = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    const { itemId } = req.params;
+
+    await mealPlanService.removeItem(userId, itemId);
+    res.json({ message: 'Item removed successfully' });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+// ===============================================
+//          NEW ENDPOINTS
+// ===============================================
+
+// POST /api/meal-plans/items/:itemId/cook - Nấu recipe đã plan
+const cookItem = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    const groupId = req.user.groupId || req.user.group_id || null;
+    const { itemId } = req.params;
+    const { force, cookedExpiryDays } = req.body;
+
+    const result = await mealPlanService.cookPlannedItem(userId, itemId, {
+      groupId,
+      force: force === true,
+      cookedExpiryDays: cookedExpiryDays || 3,
+    });
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Cook item error:', error);
+    
+    if (error.message.includes('must be cooked first')) {
+      return res.status(400).json({ message: error.message, error: 'MUST_COOK_FIRST' });
+    }
+    if (error.message.includes('Insufficient ingredients')) {
+      return res.status(400).json({ message: error.message, error: 'INSUFFICIENT_INGREDIENTS' });
+    }
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ message: error.message });
+    }
+    if (error.message.includes('Only recipe')) {
+      return res.status(400).json({ message: error.message, error: 'INVALID_ITEM_TYPE' });
+    }
+    if (error.message.includes('already')) {
+      return res.status(400).json({ message: error.message, error: 'ALREADY_PROCESSED' });
+    }
+
+    res.status(500).json({ message: error.message || 'Internal server error' });
+  }
+};
+
+// POST /api/meal-plans/items/:itemId/eat - Đánh dấu đã ăn
+const eatItem = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    const groupId = req.user.groupId || req.user.group_id || null;
+    const { itemId } = req.params;
+    const forceEat = req.body?.forceEat === true;
+
+    const result = await mealPlanService.markItemEaten(userId, itemId, {
+      groupId,
+      forceEat: forceEat === true,
+    });
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Eat item error:', error);
+
+    if (error.message.includes('Insufficient ingredient')) {
+      return res.status(400).json({ 
+        message: error.message, 
+        error: 'INSUFFICIENT_IN_FRIDGE' 
+      });
+    }
+    if (error.message.includes('must be cooked first')) {
+      return res.status(400).json({ message: error.message, error: 'MUST_COOK_FIRST' });
+    }
+    if (error.message.includes('already')) {
+      return res.status(400).json({ message: error.message, error: 'ALREADY_PROCESSED' });
+    }
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ message: error.message });
+    }
+
+    res.status(500).json({ message: error.message || 'Internal server error' });
+  }
+};
+
+// GET /api/meal-plans/:planId/availability - Kiểm tra nguyên liệu
+const checkAvailability = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    const groupId = req.user.groupId || req.user.group_id || null;
+    const { planId } = req.params;
+
+    const result = await mealPlanService.checkPlanAvailability(userId, planId, { groupId });
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Check availability error:', error);
+
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ message: error.message });
+    }
+
+    res.status(500).json({ message: error.message || 'Internal server error' });
+  }
+};
+
+// ===============================================
+//          SEARCH & RECOMMENDATIONS
+// ===============================================
+
+const parseFridgeIds = (queryParam) => {
+  if (!queryParam) return null;
+  if (Array.isArray(queryParam)) return queryParam;
+  return queryParam.split(',').map((id) => id.trim());
+};
+
 const searchRecipes = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
-    const { q, page, limit, fridgeIds } = req.query; // Lấy thêm fridgeIds
+    const { q, page, limit, fridgeIds } = req.query;
 
     const targetFridgeIds = parseFridgeIds(fridgeIds);
 
     const results = await mealPlanService.searchRecipesForPlan(
-      userId, 
-      q || '', 
-      targetFridgeIds, // Truyền vào service
-      parseInt(page) || 1, 
+      userId,
+      q || '',
+      targetFridgeIds,
+      parseInt(page) || 1,
       parseInt(limit) || 20
     );
     res.json(results);
@@ -89,17 +218,16 @@ const searchRecipes = async (req, res) => {
   }
 };
 
-// GET /api/meal-plans/recipes/recommendations
 const getRecommendations = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
-    const { limit, fridgeIds } = req.query; // Lấy thêm fridgeIds
+    const { limit, fridgeIds } = req.query;
 
     const targetFridgeIds = parseFridgeIds(fridgeIds);
 
     const results = await mealPlanService.getRecommendationsForPlan(
-      userId, 
-      targetFridgeIds, // Truyền vào service
+      userId,
+      targetFridgeIds,
       parseInt(limit) || 10
     );
     res.json(results);
@@ -108,41 +236,25 @@ const getRecommendations = async (req, res) => {
   }
 };
 
-// PATCH /api/meal-plans/items/:itemId
-const updateItem = async (req, res) => {
+// POST /api/meal-plans/:date/complete - Hoàn thành ngày
+const completeDay = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
     const groupId = req.user.groupId || req.user.group_id || null;
-    const { itemId } = req.params;
-    
-    // --- SỬA TẠI ĐÂY: Lấy quantity thay vì servings ---
-    const { quantity, isEaten, note, unitId } = req.body;
-    
-    // Truyền đúng object xuống service
-    const updatedPlan = await mealPlanService.updateItem(userId, itemId, req.body, groupId);
+    const { date } = req.params;
+    const { action } = req.body; // 'skip' | 'consume'
 
-    // Nếu service trả về null nghĩa là không tìm thấy item hoặc không có gì update
-    if (!updatedPlan) {
-        return res.status(404).json({ message: 'Meal item not found or no changes made' });
+    const result = await mealPlanService.completeDayPlan(userId, date, {
+      action: action || 'skip',
+      groupId,
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Complete day error:', error);
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ message: error.message });
     }
-
-    res.json({ message: 'Item updated', plan: updatedPlan });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// DELETE /api/meal-plans/items/:itemId
-const removeItem = async (req, res) => {
-  try {
-    const userId = req.user.id || req.user._id;
-    const groupId = req.user.groupId || req.user.group_id || null;
-    const { itemId } = req.params;
-
-    // Truyền cả groupId vào để biết hoàn trả đồ vào tủ lạnh nào
-    await mealPlanService.removeItem(userId, itemId, groupId); 
-    res.json({ message: 'Item removed successfully' });
-  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
@@ -151,8 +263,14 @@ export default {
   getPlan,
   addItem,
   addItemsBulk,
+  updateItem,
+  removeItem,
+  // New endpoints
+  cookItem,
+  eatItem,
+  checkAvailability,
+  // Search
   searchRecipes,
   getRecommendations,
-  updateItem,
-  removeItem
+  completeDay,
 };
