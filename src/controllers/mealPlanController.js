@@ -21,14 +21,12 @@ const getPlan = async (req, res) => {
 const addItem = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
-    // Client cần gửi itemType: 'recipe' hoặc 'ingredient'
-    const { date, mealType, itemType, recipeId, ingredientId, unitId, quantity } = req.body;
+    const groupId = req.user.groupId || req.user.group_id || null; // Lấy groupId từ user
 
-    if (!date || !mealType || !itemType) {
-      return res.status(400).json({ message: 'Date, mealType, and itemType are required' });
-    }
-
-    const newItem = await mealPlanService.addItemToMeal(userId, req.body);
+    const newItem = await mealPlanService.addItemToMeal(userId, { 
+      ...req.body, 
+      groupId // Truyền groupId vào service
+    });
     res.status(201).json({ message: 'Item added', item: newItem });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -39,6 +37,7 @@ const addItem = async (req, res) => {
 const addItemsBulk = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
+    const groupId = req.user.groupId || req.user.group_id || null;
     // items là một mảng []
     const { date, mealType, items } = req.body;
 
@@ -46,8 +45,11 @@ const addItemsBulk = async (req, res) => {
       return res.status(400).json({ message: 'Date, mealType, and a list of items are required' });
     }
 
-    const addedItems = await mealPlanService.addItemsToMealBulk(userId, req.body);
-    
+    const addedItems = await mealPlanService.addItemsToMealBulk(userId, { 
+      ...req.body, 
+      groupId 
+    });
+      
     res.status(201).json({ 
       message: `${addedItems.length} items added successfully`, 
       items: addedItems 
@@ -110,18 +112,14 @@ const getRecommendations = async (req, res) => {
 const updateItem = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
+    const groupId = req.user.groupId || req.user.group_id || null;
     const { itemId } = req.params;
     
     // --- SỬA TẠI ĐÂY: Lấy quantity thay vì servings ---
     const { quantity, isEaten, note, unitId } = req.body;
     
     // Truyền đúng object xuống service
-    const updatedPlan = await mealPlanService.updateItem(userId, itemId, { 
-      quantity, 
-      isEaten, 
-      note, 
-      unitId 
-    });
+    const updatedPlan = await mealPlanService.updateItem(userId, itemId, req.body, groupId);
 
     // Nếu service trả về null nghĩa là không tìm thấy item hoặc không có gì update
     if (!updatedPlan) {
@@ -138,9 +136,11 @@ const updateItem = async (req, res) => {
 const removeItem = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
+    const groupId = req.user.groupId || req.user.group_id || null;
     const { itemId } = req.params;
 
-    await mealPlanService.removeItem(userId, itemId);
+    // Truyền cả groupId vào để biết hoàn trả đồ vào tủ lạnh nào
+    await mealPlanService.removeItem(userId, itemId, groupId); 
     res.json({ message: 'Item removed successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
