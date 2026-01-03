@@ -127,9 +127,9 @@ const consumeInventoryForItem = async (userId, groupId, itemType, itemData, quan
 /**
  * Hoàn trả nguyên liệu khi XÓA item khỏi meal
  */
-const restockInventoryForItem = async (userId, itemType, itemData, quantity) => {
+const restockInventoryForItem = async (userId, groupId, itemType, itemData, quantity) => {
   if (itemType === 'ingredient') {
-    await restockToFridge(userId, itemData.ingredientId, itemData.unitId, quantity);
+    await restockToFridge(userId, groupId, itemData.ingredientId, itemData.unitId, quantity);
   } else if (itemType === 'recipe') {
     const recipe = await Recipe.findById(itemData.recipeId).lean();
     if (!recipe) return;
@@ -139,7 +139,7 @@ const restockInventoryForItem = async (userId, itemType, itemData, quantity) => 
       if (ing.optional) continue;
       
       const restockQty = (ing.quantity || 0) * quantity;
-      await restockToFridge(userId, ing.ingredientId, ing.unitId, restockQty);
+      await restockToFridge(userId, groupId, ing.ingredientId, ing.unitId, restockQty);
     }
   }
 };
@@ -149,7 +149,7 @@ const restockInventoryForItem = async (userId, itemType, itemData, quantity) => 
 // ===============================================
 
 export const addItemToMeal = async (userId, data) => {
-  const { date, mealType, itemType, recipeId, ingredientId, unitId, quantity } = data;
+  const { date, mealType, itemType, recipeId, ingredientId, unitId, quantity, groupId } = data;
   const targetDate = normalizeDate(date);
   const qty = quantity || 1;
 
@@ -312,7 +312,7 @@ export const addItemsToMealBulk = async (userId, data) => {
 //          UPDATE ITEM (ĐÃ SỬA)
 // ===============================================
 
-export const updateItem = async (userId, itemId, updateData) => {
+export const updateItem = async (userId, itemId, updateData, groupId) => {
   if (!mongoose.Types.ObjectId.isValid(itemId)) {
     throw new Error('Invalid Item ID');
   }
@@ -379,7 +379,7 @@ export const updateItem = async (userId, itemId, updateData) => {
 //          REMOVE ITEM (ĐÃ SỬA)
 // ===============================================
 
-export const removeItem = async (userId, itemId) => {
+export const removeItem = async (userId, itemId, groupId) => {
   if (!mongoose.Types.ObjectId.isValid(itemId)) {
     throw new Error('Invalid Item ID');
   }
