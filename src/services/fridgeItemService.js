@@ -50,7 +50,10 @@ const fridgeItemService = {
     const groupId = owner.groupId ?? null;
     const userId = groupId ? null : (owner.userId ?? null);
 
-    const query = {};
+    const query = {
+      quantity: { $gt: 0 }
+    };
+    
     if (groupId) query.groupId = new mongoose.Types.ObjectId(groupId);
     else if (userId) query.userId = new mongoose.Types.ObjectId(userId);
     else throw new Error('Owner (userId or groupId) is required');
