@@ -13,7 +13,7 @@ const reportService = {
   async getOverview(userId) {
     // Get user's group if exists
     const group = await Group.findOne({
-      members: { $elemMatch: { userId, status: 'active' } },
+      members: userId,
     });
     const groupId = group?._id || null;
 
@@ -112,8 +112,8 @@ const reportService = {
     let totalSpending = 0;
     completedListsData.forEach((list) => {
       list.items.forEach((item) => {
-        if (item.isPurchased && item.price) {
-          totalSpending += item.price * item.quantity;
+        if (item.isPurchased && item.price != null && item.quantity != null) {
+          totalSpending += (item.price || 0) * (item.quantity || 0);
         }
       });
     });
@@ -143,7 +143,7 @@ const reportService = {
 
     // Get user's group if exists
     const group = await Group.findOne({
-      members: { $elemMatch: { userId, status: 'active' } },
+      members: userId,
     });
     const groupId = group?._id || null;
 
@@ -163,7 +163,7 @@ const reportService = {
     }
 
     const shoppingLists = await ShoppingList.find(query)
-      .populate('items.ingredientId', 'name category')
+      .populate('items.ingredientId', 'name foodCategory')
       .sort({ createdAt: 1 });
 
     // Calculate spending by time period
@@ -197,7 +197,7 @@ const reportService = {
           spendingByPeriod[periodKey] = (spendingByPeriod[periodKey] || 0) + amount;
 
           // Group by category
-          const category = item.ingredientId?.category || 'Other';
+          const category = item.ingredientId?.foodCategory || 'Other';
           spendingByCategory[category] = (spendingByCategory[category] || 0) + amount;
         }
       });
@@ -290,6 +290,7 @@ const reportService = {
       lunch: { total: 0, eaten: 0 },
       dinner: { total: 0, eaten: 0 },
       snack: { total: 0, eaten: 0 },
+      snacks: { total: 0, eaten: 0 }, // Support both 'snack' and 'snacks'
     };
     const recipeUsage = {};
     const ingredientUsage = {};
@@ -301,11 +302,22 @@ const reportService = {
         meal.items.forEach((item) => {
           hasAnyMeal = true;
           totalMeals++;
-          mealTypeDistribution[meal.mealType].total++;
+          // Normalize mealType: 'snacks' -> 'snack' for consistency
+          const normalizedMealType = meal.mealType === 'snacks' ? 'snack' : meal.mealType;
+          if (mealTypeDistribution[normalizedMealType]) {
+            mealTypeDistribution[normalizedMealType].total++;
+          } else {
+            // If mealType doesn't exist, use 'snack' as default
+            mealTypeDistribution.snack.total++;
+          }
 
           if (item.isEaten) {
             eatenMeals++;
-            mealTypeDistribution[meal.mealType].eaten++;
+            if (mealTypeDistribution[normalizedMealType]) {
+              mealTypeDistribution[normalizedMealType].eaten++;
+            } else {
+              mealTypeDistribution.snack.eaten++;
+            }
           }
 
           // Track recipe usage
@@ -340,13 +352,37 @@ const reportService = {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    // Meal type completion rates
-    const mealTypeStats = Object.entries(mealTypeDistribution).map(([type, stats]) => ({
-      mealType: type,
-      total: stats.total,
-      eaten: stats.eaten,
-      completionRate: stats.total > 0 ? Math.round((stats.eaten / stats.total) * 100) : 0,
-    }));
+    // Meal type completion rates (exclude 'snacks' if it's empty, merge with 'snack')
+    const mealTypeStats = Object.entries(mealTypeDistribution)
+      .filter(([type]) => type !== 'snacks' || mealTypeDistribution.snacks.total > 0)
+      .map(([type, stats]) => {
+        // Merge snacks into snack if both exist
+        if (type === 'snack' && mealTypeDistribution.snacks.total > 0) {
+          return {
+            mealType: 'snack',
+            total: stats.total + mealTypeDistribution.snacks.total,
+            eaten: stats.eaten + mealTypeDistribution.snacks.eaten,
+            completionRate:
+              stats.total + mealTypeDistribution.snacks.total > 0
+                ? Math.round(
+                    ((stats.eaten + mealTypeDistribution.snacks.eaten) /
+                      (stats.total + mealTypeDistribution.snacks.total)) *
+                      100
+                  )
+                : 0,
+          };
+        }
+        if (type === 'snacks') {
+          return null; // Skip, already merged
+        }
+        return {
+          mealType: type,
+          total: stats.total,
+          eaten: stats.eaten,
+          completionRate: stats.total > 0 ? Math.round((stats.eaten / stats.total) * 100) : 0,
+        };
+      })
+      .filter((item) => item !== null);
 
     return {
       summary: {
@@ -389,7 +425,33 @@ const reportService = {
     const mealPlans = await MealPlan.find({
       userId,
       date: { $gte: startDate, $lte: now },
-    }).populate('meals.items.recipeId', 'title tags');
+    }).populate('meals.items.recipeId', 'title');
+
+    // Collect all unique recipe IDs
+    const recipeIds = new Set();
+    mealPlans.forEach((plan) => {
+      plan.meals.forEach((meal) => {
+        meal.items.forEach((item) => {
+          if (item.itemType === 'recipe' && item.recipeId) {
+            recipeIds.add(item.recipeId._id.toString());
+          }
+        });
+      });
+    });
+
+    // Fetch all recipes with tags populated in one query
+    const recipes = await Recipe.find({
+      _id: { $in: Array.from(recipeIds) },
+    }).populate('tags', 'name');
+
+    // Create a map for quick lookup
+    const recipeMap = new Map();
+    recipes.forEach((recipe) => {
+      recipeMap.set(recipe._id.toString(), {
+        title: recipe.title,
+        tags: recipe.tags || [],
+      });
+    });
 
     // Count recipe usage
     const recipeUsage = {};
@@ -400,22 +462,22 @@ const reportService = {
         meal.items.forEach((item) => {
           if (item.itemType === 'recipe' && item.recipeId) {
             const recipeId = item.recipeId._id.toString();
-            const recipeTitle = item.recipeId.title;
+            const recipeData = recipeMap.get(recipeId);
 
             if (!recipeUsage[recipeId]) {
               recipeUsage[recipeId] = {
                 recipeId,
-                title: recipeTitle,
+                title: recipeData?.title || item.recipeId.title || 'Unknown',
                 count: 0,
-                tags: item.recipeId.tags || [],
+                tags: recipeData?.tags || [],
               };
             }
             recipeUsage[recipeId].count++;
 
             // Count tag usage
-            if (item.recipeId.tags) {
-              item.recipeId.tags.forEach((tag) => {
-                const tagId = tag.toString();
+            if (recipeData?.tags && recipeData.tags.length > 0) {
+              recipeData.tags.forEach((tag) => {
+                const tagId = tag._id ? tag._id.toString() : tag.toString();
                 tagUsage[tagId] = (tagUsage[tagId] || 0) + 1;
               });
             }
@@ -463,7 +525,7 @@ const reportService = {
   async getExpiryTracking(userId, period = 'week') {
     // Get user's group if exists
     const group = await Group.findOne({
-      members: { $elemMatch: { userId, status: 'active' } },
+      members: userId,
     });
     const groupId = group?._id || null;
 
@@ -479,7 +541,7 @@ const reportService = {
       status: 'in-stock',
       expiryDate: { $gt: now, $lte: futureDate },
     })
-      .populate('foodId', 'name category')
+      .populate('foodId', 'name foodCategory')
       .populate('unitId', 'name abbreviation')
       .sort({ expiryDate: 1 });
 
@@ -489,7 +551,7 @@ const reportService = {
       expiryDate: { $lt: now },
       status: { $in: ['in-stock', 'expired'] },
     })
-      .populate('foodId', 'name category')
+      .populate('foodId', 'name foodCategory')
       .populate('unitId', 'name abbreviation')
       .sort({ expiryDate: 1 });
 
@@ -500,7 +562,7 @@ const reportService = {
       status: { $in: ['expired', 'discarded'] },
       updatedAt: { $gte: periodStart },
     })
-      .populate('foodId', 'name category')
+      .populate('foodId', 'name foodCategory')
       .populate('unitId', 'name abbreviation');
 
     // Calculate waste statistics
@@ -549,7 +611,7 @@ const reportService = {
 
     // Get user's group if exists
     const group = await Group.findOne({
-      members: { $elemMatch: { userId, status: 'active' } },
+      members: userId,
     });
     const groupId = group?._id || null;
 
@@ -571,7 +633,7 @@ const reportService = {
     }
 
     const wastedItems = await FridgeItem.find(query)
-      .populate('foodId', 'name category')
+      .populate('foodId', 'name foodCategory')
       .populate('unitId', 'name abbreviation')
       .sort({ updatedAt: -1 });
 
@@ -587,7 +649,7 @@ const reportService = {
           name: foodName,
           count: 0,
           totalValue: 0,
-          category: item.foodId?.category || 'Other',
+          category: item.foodId?.foodCategory || 'Other',
         };
       }
       wasteByFood[foodName].count++;
