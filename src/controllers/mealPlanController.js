@@ -1,31 +1,33 @@
 import * as mealPlanService from '../services/mealPlanService.js';
 
-// ===============================================
-//          EXISTING ENDPOINTS (updated)
-// ===============================================
+// ✅ HELPER: Lấy groupId từ user
+const getGroupId = (user) => user?.groupId || user?.group_id || null;
 
 // GET /api/meal-plans?startDate=...&endDate=...
 const getPlan = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
+    const groupId = getGroupId(req.user);  // ✅ THÊM
     const { startDate, endDate } = req.query;
 
     if (!startDate || !endDate) {
       return res.status(400).json({ message: 'Start date and end date are required' });
     }
 
-    const plans = await mealPlanService.getPlanByDateRange(userId, startDate, endDate);
+    const plans = await mealPlanService.getPlanByDateRange(userId, startDate, endDate, groupId);  // ✅ SỬA
     res.json(plans);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// POST /api/meal-plans/items - Thêm item (KHÔNG trừ inventory)
+// POST /api/meal-plans/items
 const addItem = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
-    const newItem = await mealPlanService.addItemToMeal(userId, req.body);
+    const groupId = getGroupId(req.user);  // ✅ THÊM
+    
+    const newItem = await mealPlanService.addItemToMeal(userId, req.body, groupId);  // ✅ SỬA
     res.status(201).json({ 
       message: 'Item added to plan', 
       item: newItem,
@@ -36,17 +38,18 @@ const addItem = async (req, res) => {
   }
 };
 
-// POST /api/meal-plans/items/bulk - Thêm nhiều items (KHÔNG trừ inventory)
+// POST /api/meal-plans/items/bulk
 const addItemsBulk = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
+    const groupId = getGroupId(req.user);  // ✅ THÊM
     const { date, mealType, items } = req.body;
 
     if (!date || !mealType || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Date, mealType, and a list of items are required' });
     }
 
-    const addedItems = await mealPlanService.addItemsToMealBulk(userId, req.body);
+    const addedItems = await mealPlanService.addItemsToMealBulk(userId, req.body, groupId);  // ✅ SỬA
     res.status(201).json({
       message: `${addedItems.length} items added to plan`,
       items: addedItems,
@@ -265,11 +268,9 @@ export default {
   addItemsBulk,
   updateItem,
   removeItem,
-  // New endpoints
   cookItem,
   eatItem,
   checkAvailability,
-  // Search
   searchRecipes,
   getRecommendations,
   completeDay,

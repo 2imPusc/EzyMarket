@@ -114,6 +114,13 @@ const mealPlanSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    // ✅ THÊM MỚI: groupId để share trong group
+    groupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Group',
+      default: null,
+      index: true,
+    },
     date: { type: Date, required: true },
     meals: {
       type: [mealSectionSchema],
@@ -126,14 +133,29 @@ const mealPlanSchema = new mongoose.Schema(
       totalEaten: { type: Number, default: 0 },
       isFullyCompleted: { type: Boolean, default: false },
     },
-    // Track if this plan has been reconciled
     isReconciled: { type: Boolean, default: false },
     reconciledAt: { type: Date },
   },
   { timestamps: true }
 );
 
-mealPlanSchema.index({ userId: 1, date: 1 }, { unique: true });
+// ✅ SỬA: Index unique theo groupId hoặc userId + date
+// Nếu có groupId: unique theo groupId + date
+// Nếu không có groupId: unique theo userId + date
+mealPlanSchema.index(
+  { userId: 1, groupId: 1, date: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { groupId: { $exists: true, $ne: null } },
+  }
+);
+mealPlanSchema.index(
+  { userId: 1, date: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { groupId: null },
+  }
+);
 
 mealPlanSchema.pre('save', function (next) {
   if (this.meals.length === 0) {
@@ -142,7 +164,9 @@ mealPlanSchema.pre('save', function (next) {
   }
 
   // Update summary counts
-  let totalPlanned = 0, totalCooked = 0, totalEaten = 0;
+  let totalPlanned = 0,
+    totalCooked = 0,
+    totalEaten = 0;
   for (const meal of this.meals) {
     for (const item of meal.items) {
       if (item.status === 'planned') totalPlanned++;

@@ -68,13 +68,12 @@ const shoppingService = {
         const endOfDay = new Date(date);
         endOfDay.setHours(23, 59, 59, 999);
 
-        const plan = await MealPlan.findOne({
-          userId,
-          date: {
-            $gte: startOfDay,
-            $lte: endOfDay,
-          },
-        });
+        // ✅ SỬA: Query MealPlan theo groupId nếu có, nếu không thì theo userId
+        const mealPlanQuery = groupId 
+          ? { groupId, date: { $gte: startOfDay, $lte: endOfDay } }
+          : { userId, groupId: null, date: { $gte: startOfDay, $lte: endOfDay } };
+
+        const plan = await MealPlan.findOne(mealPlanQuery);
 
         if (!plan) continue;
 

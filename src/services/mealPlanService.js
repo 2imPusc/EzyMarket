@@ -24,25 +24,32 @@ const getMealIndex = (plan, inputType) => {
   return plan.meals.findIndex((m) => m.mealType === 'snack');
 };
 
-const buildOwnerQuery = (userId, groupId) => {
-  if (groupId) return { groupId: new mongoose.Types.ObjectId(groupId) };
-  if (userId) return { userId: new mongoose.Types.ObjectId(userId), groupId: null };
-  throw new Error('Either userId or groupId is required');
+// ✅ SỬA: buildOwnerQuery hỗ trợ cả MealPlan
+const buildMealPlanQuery = (userId, groupId) => {
+  // Nếu user có group → query theo groupId
+  // Nếu không có group → query theo userId
+  if (groupId) {
+    return { groupId: new mongoose.Types.ObjectId(groupId) };
+  }
+  return { userId: new mongoose.Types.ObjectId(userId), groupId: null };
 };
 
 // ===============================================
-//          GET PLAN (giữ nguyên)
+//          GET PLAN - SỬA ĐỂ HỖ TRỢ GROUP
 // ===============================================
 
-export const getPlanByDateRange = async (userId, startDate, endDate) => {
+export const getPlanByDateRange = async (userId, startDate, endDate, groupId = null) => {
   const start = normalizeDate(startDate);
   const end = normalizeDate(endDate);
   end.setUTCHours(23, 59, 59, 999);
 
-  const plans = await MealPlan.find({
-    userId,
+  // ✅ SỬA: Query theo group nếu có
+  const query = {
+    ...buildMealPlanQuery(userId, groupId),
     date: { $gte: start, $lte: end },
-  })
+  };
+
+  const plans = await MealPlan.find(query)
     .populate('meals.items.recipeId', 'title imageUrl prepTime cookTime servings')
     .populate('meals.items.ingredientId', 'name imageURL')
     .populate('meals.items.unitId', 'name abbreviation')
@@ -54,19 +61,26 @@ export const getPlanByDateRange = async (userId, startDate, endDate) => {
 };
 
 // ===============================================
-//     ADD ITEM - KHÔNG TRỪ INVENTORY
+//     ADD ITEM - SỬA ĐỂ HỖ TRỢ GROUP
 // ===============================================
 
-export const addItemToMeal = async (userId, data) => {
+export const addItemToMeal = async (userId, data, groupId = null) => {
   const { date, mealType, itemType, recipeId, ingredientId, unitId, quantity, note } = data;
   const targetDate = normalizeDate(date);
   const qty = quantity || 1;
 
-  // Find or create plan
-  let plan = await MealPlan.findOne({ userId, date: targetDate });
+  // ✅ SỬA: Query và tạo plan theo group nếu có
+  const ownerQuery = buildMealPlanQuery(userId, groupId);
+  
+  let plan = await MealPlan.findOne({ ...ownerQuery, date: targetDate });
   if (!plan) {
-    plan = new MealPlan({ userId, date: targetDate, meals: [] });
-    await plan.save(); // Trigger pre-save to init meals
+    plan = new MealPlan({ 
+      userId, 
+      groupId: groupId || null,  // ✅ THÊM groupId
+      date: targetDate, 
+      meals: [] 
+    });
+    await plan.save();
     plan = await MealPlan.findById(plan._id);
   }
 
@@ -130,16 +144,24 @@ export const addItemToMeal = async (userId, data) => {
 };
 
 // ===============================================
-//     BULK ADD - KHÔNG TRỪ INVENTORY
+//     BULK ADD - SỬA ĐỂ HỖ TRỢ GROUP
 // ===============================================
 
-export const addItemsToMealBulk = async (userId, data) => {
+export const addItemsToMealBulk = async (userId, data, groupId = null) => {
   const { date, mealType, items } = data;
   const targetDate = normalizeDate(date);
 
-  let plan = await MealPlan.findOne({ userId, date: targetDate });
+  // ✅ SỬA: Query theo group
+  const ownerQuery = buildMealPlanQuery(userId, groupId);
+  
+  let plan = await MealPlan.findOne({ ...ownerQuery, date: targetDate });
   if (!plan) {
-    plan = new MealPlan({ userId, date: targetDate, meals: [] });
+    plan = new MealPlan({ 
+      userId, 
+      groupId: groupId || null,  // ✅ THÊM groupId
+      date: targetDate, 
+      meals: [] 
+    });
     await plan.save();
     plan = await MealPlan.findById(plan._id);
   }
@@ -723,7 +745,7 @@ export const getRecommendationsForPlan = async (userId, targetFridgeIds, limit =
 };
 
 // ===============================================
-//     COMPLETE DAY - MANUAL RECONCILE (SIMPLE)
+//     COMPLETE DAY - SỬA QUERY
 // ===============================================
 
 /**
@@ -739,8 +761,11 @@ export const completeDayPlan = async (userId, date, options = {}) => {
   const { action = 'skip', groupId } = options;
   const targetDate = normalizeDate(date);
 
+  // ✅ SỬA: Query theo group nếu có
+  const ownerQuery = buildMealPlanQuery(userId, groupId);
+
   const plan = await MealPlan.findOne({
-    userId: new mongoose.Types.ObjectId(userId),
+    ...ownerQuery,
     date: targetDate,
   });
 
@@ -762,14 +787,12 @@ export const completeDayPlan = async (userId, date, options = {}) => {
     alreadyProcessed: [],
   };
 
-  // Process each meal
   for (let mi = 0; mi < plan.meals.length; mi++) {
     const meal = plan.meals[mi];
 
     for (let ii = 0; ii < meal.items.length; ii++) {
       const item = meal.items[ii];
 
-      // Skip already processed items
       if (['cooked', 'eaten', 'consumed', 'skipped'].includes(item.status)) {
         results.alreadyProcessed.push({
           itemId: item._id,
@@ -778,14 +801,11 @@ export const completeDayPlan = async (userId, date, options = {}) => {
         continue;
       }
 
-      // Handle based on action
       if (action === 'skip') {
-        // Simply mark as skipped
         plan.meals[mi].items[ii].status = 'skipped';
         plan.meals[mi].items[ii].consumedAt = new Date();
         results.skipped.push({ itemId: item._id });
       } else if (action === 'consume') {
-        // Try to consume from fridge
         let consumed = false;
 
         if (item.itemType === 'ingredient') {
@@ -808,7 +828,6 @@ export const completeDayPlan = async (userId, date, options = {}) => {
             consumed = true;
           }
         }
-        // Recipe không auto-cook trong simple mode, chỉ skip
 
         if (consumed) {
           plan.meals[mi].items[ii].status = 'consumed';
@@ -823,7 +842,6 @@ export const completeDayPlan = async (userId, date, options = {}) => {
     }
   }
 
-  // Mark plan as completed
   plan.isReconciled = true;
   plan.reconciledAt = new Date();
   await plan.save();
