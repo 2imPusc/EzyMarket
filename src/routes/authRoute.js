@@ -41,6 +41,11 @@ const router = express.Router();
  *                 format: password
  *                 minLength: 6
  *                 example: 123456
+ *               phone:
+ *                 type: string
+ *                 required: false
+ *                 description: Phone number (optional)
+ *                 example: "0912345678"
  *     responses:
  *       201:
  *         description: User registered successfully
@@ -49,15 +54,40 @@ const router = express.Router();
  *             schema:
  *               type: object
  *               properties:
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     userName:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     role:
+ *                       type: string
  *                 message:
  *                   type: string
- *                   example: User registered successfully
+ *                   example: Registration successful. Please check your email to verify your account.
  *       400:
- *         description: Bad request - validation error
+ *         description: Bad request - email already registered
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Error'
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: This email has registered
+ *       409:
+ *         description: Email registered but not verified - verification email resent
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: This email is already registered but not verified. Verification email resent.
  *       500:
  *         description: Internal server error
  */
@@ -106,8 +136,13 @@ router.post('/register', validateUser, authController.register);
  *                       type: string
  *                     role:
  *                       type: string
+ *                       enum: [user, admin]
  *                     email:
  *                       type: string
+ *                     groupId:
+ *                       type: string
+ *                       nullable: true
+ *                       description: ID of the group user belongs to (if any)
  *                 token:
  *                   type: string
  *                   description: JWT access token
@@ -116,6 +151,16 @@ router.post('/register', validateUser, authController.register);
  *                   description: JWT refresh token
  *       400:
  *         description: Invalid credentials
+ *       403:
+ *         description: Email not verified
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Please verify your email before logging in.
  *       500:
  *         description: Internal server error
  */
@@ -127,9 +172,9 @@ router.post('/login', authController.login);
  * /api/user/token/refresh:
  *   post:
  *     summary: Refresh access token
- *     description: Generate new access and refresh tokens using a valid refresh token
+ *     description: Generate new access and refresh tokens using a valid refresh token. Note: This endpoint does not require Bearer token in header, but requires refreshToken in request body.
  *     tags: [Authentication]
- *     security: [{ bearerAuth: [] }]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -273,13 +318,30 @@ router.delete('/:id', authMiddleware.verifyTokenAndSelfOrAdmin, authController.d
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/UserResponse'
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 userName:
+ *                   type: string
+ *                 email:
+ *                   type: string
+ *                 phone:
+ *                   type: string
+ *                   nullable: true
+ *                 role:
+ *                   type: string
+ *                   enum: [user, admin]
+ *                 avatar:
+ *                   type: string
+ *                   format: uri
+ *                   nullable: true
  *       400:
  *         description: Bad request (e.g., no fields to update)
  *       401:
  *         description: Unauthorized
- *       404:
- *         description: User not found
+ *       500:
+ *         description: Internal server error
  */
 // EDIT
 router.put('/me', authMiddleware.verifyToken, authController.update);
@@ -322,7 +384,23 @@ router.put('/me', authMiddleware.verifyToken, authController.update);
  *                   type: string
  *                   enum: [user, admin]
  *                   example: "user"
+ *                 groupId:
+ *                   type: object
+ *                   nullable: true
+ *                   description: Group information (populated if user belongs to a group)
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     ownerId:
+ *                       type: string
  *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *                 updatedAt:
  *                   type: string
  *                   format: date-time
  *       401:

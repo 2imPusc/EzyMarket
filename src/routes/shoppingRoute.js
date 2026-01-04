@@ -25,8 +25,17 @@ router.use(authMiddleware.verifyToken);
  *           type: string
  *           description: The auto-generated id of the item
  *         ingredientId:
- *           type: string
- *           description: The id of the ingredient (optional, used for linking to fridge items)
+ *           type: object
+ *           nullable: true
+ *           description: Ingredient information (populated with name and imageURL when available)
+ *           properties:
+ *             _id:
+ *               type: string
+ *             name:
+ *               type: string
+ *             imageURL:
+ *               type: string
+ *               nullable: true
  *         name:
  *           type: string
  *           description: Name of the item
@@ -34,8 +43,16 @@ router.use(authMiddleware.verifyToken);
  *           type: number
  *           description: Quantity of the item
  *         unitId:
- *           type: string
- *           description: The id of the unit (ObjectId reference to Unit model). System will auto-populate unit name if provided.
+ *           type: object
+ *           nullable: true
+ *           description: Unit information (populated with name and abbreviation when available)
+ *           properties:
+ *             _id:
+ *               type: string
+ *             name:
+ *               type: string
+ *             abbreviation:
+ *               type: string
  *         unit:
  *           type: string
  *           description: Unit of measurement (display name). System will auto-find unitId if only unit is provided.
@@ -44,13 +61,16 @@ router.use(authMiddleware.verifyToken);
  *           description: Whether the item is purchased
  *         price:
  *           type: number
+ *           nullable: true
  *           description: Giá tiền thực tế mua
  *         servingQuantity:
  *           type: number
+ *           nullable: true
  *           description: Số khẩu phần
  *         expiryDate:
  *           type: string
- *           format: date
+ *           format: date-time
+ *           nullable: true
  *           description: Ngày hết hạn
  *     ShoppingList:
  *       type: object
@@ -63,10 +83,19 @@ router.use(authMiddleware.verifyToken);
  *           description: The auto-generated id of the shopping list
  *         groupId:
  *           type: string
- *           description: The id of the group
+ *           nullable: true
+ *           description: The id of the group (null if personal list)
  *         creatorId:
- *           type: string
- *           description: The id of the creator
+ *           type: object
+ *           description: Creator information (populated with userName and avatar)
+ *           properties:
+ *             _id:
+ *               type: string
+ *             userName:
+ *               type: string
+ *             avatar:
+ *               type: string
+ *               nullable: true
  *         title:
  *           type: string
  *           description: The title of the shopping list
@@ -96,7 +125,7 @@ router.use(authMiddleware.verifyToken);
  *     summary: Create a new shopping list
  *     description: |
  *       Tạo shopping list mới. Có thể tạo từ meal plans hoặc items trực tiếp.
- *       
+ *
  *       **Normalize tự động:**
  *       - Nếu items có `unitId` nhưng không có `unit`, hệ thống sẽ tự động lấy tên unit từ database.
  *       - Nếu items có `unit` (string) nhưng không có `unitId`, hệ thống sẽ tự động tìm `unitId` tương ứng.
@@ -162,7 +191,7 @@ router.use(authMiddleware.verifyToken);
  *             schema:
  *               $ref: '#/components/schemas/ShoppingList'
  *       400:
- *         description: Bad request
+ *         description: Bad request (missing required fields or invalid data)
  *       404:
  *         description: Group not found
  *       500:
@@ -192,7 +221,7 @@ router.post(
  *         description: The group id
  *     responses:
  *       200:
- *         description: The list of shopping lists
+ *         description: The list of shopping lists with populated creator information
  *         content:
  *           application/json:
  *             schema:
@@ -246,11 +275,16 @@ router.get('/:id', shoppingController.getShoppingListById);
  *   post:
  *     summary: Hoàn thành shopping list - Cập nhật thông tin đã mua và chuyển vào tủ lạnh
  *     description: |
- *       Cập nhật thông tin các nguyên liệu đã mua (giá, số lượng, hạn sử dụng), đổi status sang completed và tự động thêm vào fridge-items. 
+ *       Cập nhật thông tin các nguyên liệu đã mua (giá, số lượng, hạn sử dụng), đổi status sang completed và tự động thêm vào fridge-items.
  *       Chỉ cần gọi API này 1 lần duy nhất.
- *       
- *       **Lưu ý:** Chỉ những items có `isPurchased = true`, `ingredientId` và `unitId` mới được chuyển vào tủ lạnh. 
- *       Các items thiếu `ingredientId` hoặc `unitId` sẽ bị bỏ qua.
+ *
+ *       **Lưu ý:**
+ *       - Hệ thống sẽ **tự động đánh dấu `isPurchased = true`** cho tất cả items trong request body (items đã mua).
+ *       - **CHỈ những items trong request body (đã mua) mới được chuyển vào tủ lạnh**, không phải tất cả items có `isPurchased = true`.
+ *       - Chỉ những items có `ingredientId` và `unitId` mới được chuyển vào tủ lạnh.
+ *       - Các items thiếu `ingredientId` hoặc `unitId` sẽ bị bỏ qua khi chuyển vào tủ lạnh.
+ *       - Các items không có trong request body (không mua được) sẽ **KHÔNG** được chuyển vào tủ lạnh.
+ *       - User không cần đánh dấu `isPurchased = true` trước, hệ thống sẽ tự động đánh dấu khi checkout.
  *     tags: [ShoppingLists]
  *     security:
  *       - bearerAuth: []
@@ -272,28 +306,35 @@ router.get('/:id', shoppingController.getShoppingListById);
  *                 type: array
  *                 description: Danh sách các item đã mua cần cập nhật thông tin
  *                 items:
- *                   type: object
- *                   properties:
- *                     itemId:
- *                       type: string
- *                       description: ID của item trong shopping list
- *                     price:
- *                       type: number
- *                       description: Giá tiền thực tế mua
- *                     servingQuantity:
- *                       type: number
- *                       description: Số khẩu phần (nếu không theo bữa ăn)
- *                     expiryDate:
- *                       type: string
- *                       format: date
- *                       description: Ngày hết hạn
+ *                   type: array
+ *                   description: Danh sách các item đã mua cần cập nhật thông tin. Hệ thống sẽ tự động đánh dấu isPurchased = true cho các items này.
+ *                   items:
+ *                     type: object
+ *                     required:
+ *                       - itemId
+ *                     properties:
+ *                       itemId:
+ *                         type: string
+ *                         description: ID của item trong shopping list
+ *                       price:
+ *                         type: number
+ *                         description: Giá tiền thực tế mua
+ *                       servingQuantity:
+ *                         type: number
+ *                         description: Số khẩu phần (nếu không theo bữa ăn)
+ *                       expiryDate:
+ *                         type: string
+ *                         format: date
+ *                         description: Ngày hết hạn
  *     responses:
  *       200:
- *         description: Checkout thành công, shopping list đã completed và items đã được thêm vào tủ lạnh
+ *         description: Checkout thành công, shopping list đã completed và items đã được thêm vào tủ lạnh. Response bao gồm populated data (creatorId, items.ingredientId, items.unitId).
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ShoppingList'
+ *       400:
+ *         description: Bad request (invalid itemId or missing required fields)
  *       404:
  *         description: Shopping list not found
  *       500:
@@ -332,11 +373,13 @@ router.post('/:id/checkout', shoppingController.checkoutShoppingList);
  *                 enum: [active, completed, archived]
  *     responses:
  *       200:
- *         description: The shopping list was updated
+ *         description: The shopping list was updated. Response bao gồm populated data (creatorId, items.ingredientId, items.unitId).
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ShoppingList'
+ *       400:
+ *         description: Bad request (invalid status value or invalid data)
  *       404:
  *         description: Shopping list not found
  *       500:
@@ -410,11 +453,13 @@ router.delete('/:id', shoppingController.deleteShoppingList);
  *                 description: ID của ingredient (ObjectId). Cần thiết nếu muốn chuyển item vào tủ lạnh sau khi checkout.
  *     responses:
  *       200:
- *         description: The item was added
+ *         description: The item was added. Hệ thống sẽ tự động normalize unitId và unit. Response bao gồm populated data (creatorId, items.ingredientId, items.unitId).
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ShoppingList'
+ *       400:
+ *         description: Bad request (missing name or invalid data)
  *       404:
  *         description: Shopping list not found
  *       500:
@@ -467,7 +512,7 @@ router.post('/:id/items', shoppingController.addItem);
  *                 description: Đánh dấu item đã được mua
  *     responses:
  *       200:
- *         description: The item was updated
+ *         description: The item was updated. Hệ thống sẽ tự động normalize unitId và unit khi cập nhật. Response bao gồm populated data (creatorId, items.ingredientId, items.unitId).
  *         content:
  *           application/json:
  *             schema:
@@ -502,7 +547,7 @@ router.put('/:id/items/:itemId', shoppingController.updateItem);
  *         description: The item id
  *     responses:
  *       200:
- *         description: The item was removed
+ *         description: The item was removed. Response bao gồm populated data (creatorId, items.ingredientId, items.unitId).
  *         content:
  *           application/json:
  *             schema:
