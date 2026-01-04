@@ -174,8 +174,8 @@ const reportService = {
 
     shoppingLists.forEach((list) => {
       list.items.forEach((item) => {
-        if (item.isPurchased && item.price != null && item.quantity != null) {
-          const amount = (item.price || 0) * (item.quantity || 0);
+        if (item.isPurchased && item.price) {
+          const amount = item.price * item.quantity;
           totalSpending += amount;
           itemCount++;
 

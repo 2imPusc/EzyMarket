@@ -322,14 +322,8 @@ router.get('/meals', reportController.mealPlanReport);
  *                         type: number
  *                       tags:
  *                         type: array
- *                         description: Array of tag objects associated with the recipe
  *                         items:
  *                           type: object
- *                           properties:
- *                             _id:
- *                               type: string
- *                             name:
- *                               type: string
  *                 unusedRecipes:
  *                   type: array
  *                   description: Recipes chưa bao giờ dùng
@@ -385,26 +379,12 @@ router.get('/recipe-usage', reportController.recipeUsageStats);
  *                         type: string
  *                       food:
  *                         type: object
- *                         description: Ingredient object (populated with name and foodCategory)
- *                         properties:
- *                           _id:
- *                             type: string
- *                           name:
- *                             type: string
- *                           foodCategory:
- *                             type: string
+ *                         description: Ingredient object (populated)
  *                       quantity:
  *                         type: number
  *                       unit:
  *                         type: object
- *                         description: Unit object (populated with name and abbreviation)
- *                         properties:
- *                           _id:
- *                             type: string
- *                           name:
- *                             type: string
- *                           abbreviation:
- *                             type: string
+ *                         description: Unit object (populated)
  *                       expiryDate:
  *                         type: string
  *                         format: date-time
@@ -422,26 +402,10 @@ router.get('/recipe-usage', reportController.recipeUsageStats);
  *                         type: string
  *                       food:
  *                         type: object
- *                         description: Ingredient object (populated with name and foodCategory)
- *                         properties:
- *                           _id:
- *                             type: string
- *                           name:
- *                             type: string
- *                           foodCategory:
- *                             type: string
  *                       quantity:
  *                         type: number
  *                       unit:
  *                         type: object
- *                         description: Unit object (populated with name and abbreviation)
- *                         properties:
- *                           _id:
- *                             type: string
- *                           name:
- *                             type: string
- *                           abbreviation:
- *                             type: string
  *                       expiryDate:
  *                         type: string
  *                         format: date-time
