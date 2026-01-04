@@ -31,6 +31,29 @@ const groupMiddleware = {
     }
   },
 
+  checkGroupExistsOrNull: async (req, res, next) => {
+    try {
+      const groupId = req.params.groupId || req.body.groupId;
+      
+      // Nếu groupId là null hoặc undefined, cho phép (personal list)
+      if (!groupId || groupId === 'null' || groupId === 'undefined') {
+        req.group = null;
+        return next();
+      }
+
+      // Nếu có groupId, kiểm tra group tồn tại
+      const group = await Group.findById(groupId);
+      if (!group) {
+        return res.status(404).json({ message: 'Group not found' });
+      }
+
+      req.group = group;
+      next();
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  },
+
   verifyOwner: (req, res, next) => {
     if (!req.group) {
       return res.status(500).json({ message: 'Group not loaded' });

@@ -69,7 +69,7 @@ const shoppingService = {
         endOfDay.setHours(23, 59, 59, 999);
 
         // ✅ SỬA: Query MealPlan theo groupId nếu có, nếu không thì theo userId
-        const mealPlanQuery = groupId 
+        const mealPlanQuery = groupId
           ? { groupId, date: { $gte: startOfDay, $lte: endOfDay } }
           : { userId, groupId: null, date: { $gte: startOfDay, $lte: endOfDay } };
 
@@ -159,13 +159,35 @@ const shoppingService = {
       items: finalItems,
     });
 
-    return await newShoppingList.save();
+    const savedList = await newShoppingList.save();
+
+    // Populate để trả về đầy đủ thông tin
+    return await ShoppingList.findById(savedList._id)
+      .populate('creatorId', 'userName avatar')
+      .populate('items.ingredientId', 'name imageURL')
+      .populate('items.unitId', 'name abbreviation');
   },
 
-  getShoppingLists: async (groupId) => {
-    return await ShoppingList.find({ groupId })
-      .populate('creatorId', 'userName avatar')
-      .sort({ createdAt: -1 });
+  getShoppingLists: async (groupId, userId = null) => {
+    // Nếu có groupId, lấy danh sách của group
+    if (groupId) {
+      return await ShoppingList.find({ groupId })
+        .populate('creatorId', 'userName avatar')
+        .sort({ createdAt: -1 });
+    }
+
+    // Nếu không có groupId, lấy danh sách cá nhân (theo creatorId)
+    if (userId) {
+      return await ShoppingList.find({
+        creatorId: userId,
+        groupId: null,
+      })
+        .populate('creatorId', 'userName avatar')
+        .sort({ createdAt: -1 });
+    }
+
+    // Nếu không có cả hai, trả về mảng rỗng
+    return [];
   },
 
   getShoppingListById: async (id) => {
@@ -179,12 +201,18 @@ const shoppingService = {
     const list = await ShoppingList.findById(id);
     if (!list) return null;
 
+    // Cập nhật thông tin và đánh dấu isPurchased = true cho các items trong checkoutItems
     for (const checkoutItem of checkoutItems) {
       const item = list.items.id(checkoutItem.itemId);
-      if (item && item.isPurchased) {
-        item.price = checkoutItem.price || 0;
-        item.servingQuantity = checkoutItem.servingQuantity || null;
-        item.expiryDate = checkoutItem.expiryDate || null;
+      if (item) {
+        // Tự động đánh dấu isPurchased = true
+        item.isPurchased = true;
+        // Cập nhật thông tin mua hàng
+        if (checkoutItem.price !== undefined) item.price = checkoutItem.price || 0;
+        if (checkoutItem.servingQuantity !== undefined)
+          item.servingQuantity = checkoutItem.servingQuantity || null;
+        if (checkoutItem.expiryDate !== undefined)
+          item.expiryDate = checkoutItem.expiryDate ? new Date(checkoutItem.expiryDate) : null;
       }
     }
 
@@ -195,8 +223,10 @@ const shoppingService = {
       const ownerGroupId = list.groupId ?? null;
       const ownerUserId = ownerGroupId ? null : list.creatorId;
 
-      for (const item of list.items) {
-        if (item.isPurchased && item.ingredientId && item.unitId) {
+      // CHỈ chuyển những items đã checkout (có trong checkoutItems) vào tủ lạnh
+      for (const checkoutItem of checkoutItems) {
+        const item = list.items.id(checkoutItem.itemId);
+        if (item && item.ingredientId && item.unitId) {
           const payload = {
             foodId: item.ingredientId,
             unitId: item.unitId,
@@ -215,7 +245,11 @@ const shoppingService = {
       throw error;
     }
 
-    return list;
+    // Populate để trả về đầy đủ thông tin
+    return await ShoppingList.findById(id)
+      .populate('creatorId', 'userName avatar')
+      .populate('items.ingredientId', 'name imageURL')
+      .populate('items.unitId', 'name abbreviation');
   },
 
   updateShoppingList: async (id, updateData) => {
@@ -224,7 +258,13 @@ const shoppingService = {
 
     // Cập nhật thông tin cơ bản (title, description, status)
     Object.assign(list, updateData);
-    return await list.save();
+    await list.save();
+
+    // Populate để trả về đầy đủ thông tin
+    return await ShoppingList.findById(id)
+      .populate('creatorId', 'userName avatar')
+      .populate('items.ingredientId', 'name imageURL')
+      .populate('items.unitId', 'name abbreviation');
   },
 
   deleteShoppingList: async (id) => {
@@ -235,8 +275,48 @@ const shoppingService = {
     const list = await ShoppingList.findById(id);
     if (!list) return null;
 
-    list.items.push(itemData);
-    return await list.save();
+    // Helper function để tìm Unit từ unitText (tên đơn vị)
+    const findUnitByText = async (unitText) => {
+      if (!unitText || !unitText.trim()) return null;
+      const normalizedText = unitText.trim().toLowerCase();
+      return await Unit.findOne({
+        $or: [
+          { name: normalizedText },
+          { abbreviation: { $regex: new RegExp(`^${normalizedText}$`, 'i') } },
+        ],
+      });
+    };
+
+    // Normalize item trước khi thêm
+    const normalized = { ...itemData };
+
+    // Nếu có unitId nhưng chưa có unit, lấy tên từ Unit
+    if (normalized.unitId && !normalized.unit) {
+      const u = await Unit.findById(normalized.unitId);
+      if (u) normalized.unit = u.name;
+    }
+    // Nếu có unit (string) nhưng chưa có unitId, tìm unitId
+    else if (normalized.unit && !normalized.unitId) {
+      const foundUnit = await findUnitByText(normalized.unit);
+      if (foundUnit) {
+        normalized.unitId = foundUnit._id;
+        normalized.unit = foundUnit.name; // Chuẩn hóa về tên trong DB
+      }
+    }
+
+    // Đảm bảo isPurchased mặc định là false
+    if (normalized.isPurchased === undefined) {
+      normalized.isPurchased = false;
+    }
+
+    list.items.push(normalized);
+    await list.save();
+
+    // Populate để trả về đầy đủ thông tin
+    return await ShoppingList.findById(id)
+      .populate('creatorId', 'userName avatar')
+      .populate('items.ingredientId', 'name imageURL')
+      .populate('items.unitId', 'name abbreviation');
   },
 
   updateItem: async (id, itemId, updateData) => {
@@ -278,7 +358,13 @@ const shoppingService = {
       }
     }
 
-    return await list.save();
+    await list.save();
+
+    // Populate để trả về đầy đủ thông tin
+    return await ShoppingList.findById(id)
+      .populate('creatorId', 'userName avatar')
+      .populate('items.ingredientId', 'name imageURL')
+      .populate('items.unitId', 'name abbreviation');
   },
 
   removeItem: async (id, itemId) => {
@@ -286,7 +372,13 @@ const shoppingService = {
     if (!list) return null;
 
     list.items.pull(itemId);
-    return await list.save();
+    await list.save();
+
+    // Populate để trả về đầy đủ thông tin
+    return await ShoppingList.findById(id)
+      .populate('creatorId', 'userName avatar')
+      .populate('items.ingredientId', 'name imageURL')
+      .populate('items.unitId', 'name abbreviation');
   },
 };
 
