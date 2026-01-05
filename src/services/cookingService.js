@@ -126,7 +126,8 @@ export const cookFromRecipe = async ({ recipeId, servings, userId, groupId, forc
   const check = await checkCookability({ recipeId, servings, userId, groupId });
 
   if (!check.canCook && !force) {
-    const missingNames = check.missingIngredients
+    const missingList = (check.missing && check.missing.required) || [];
+    const missingNames = missingList
       .map(i => `${i.name} (required ${i.required}, available ${i.available})`)
       .join(', ');
     throw new Error(`Insufficient ingredients: ${missingNames}`);

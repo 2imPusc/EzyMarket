@@ -24,16 +24,25 @@ const getPlan = async (req, res) => {
 // POST /api/meal-plans/items
 const addItem = async (req, res) => {
   try {
+    // FIX: Log ra để kiểm tra xem server nhận được user là gì
+    console.log('User from Token:', req.user); 
+
+    // Lấy ID chuẩn (hỗ trợ cả id string và _id object)
     const userId = req.user.id || req.user._id;
-    const groupId = getGroupId(req.user);  // ✅ THÊM
+    const groupId = req.user.groupId || req.user.group_id || null; // Sửa getGroupId trực tiếp vào đây cho gọn
+
+    if (!userId) {
+      return res.status(401).json({ message: 'User ID not found in token' });
+    }
     
-    const newItem = await mealPlanService.addItemToMeal(userId, req.body, groupId);  // ✅ SỬA
+    const newItem = await mealPlanService.addItemToMeal(userId, req.body, groupId);
+    
     res.status(201).json({ 
       message: 'Item added to plan', 
-      item: newItem,
-      note: 'Inventory will be consumed when you cook or mark as eaten'
+      item: newItem 
     });
   } catch (error) {
+    console.error("Add Item Error:", error); // Log lỗi chi tiết
     res.status(400).json({ message: error.message });
   }
 };
@@ -60,31 +69,47 @@ const addItemsBulk = async (req, res) => {
   }
 };
 
-// PATCH /api/meal-plans/items/:itemId - Update item
+// PATCH /api/meal-plans/items/:itemId
 const updateItem = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
+    // ✅ FIX: Lấy thêm groupId từ token
+    const groupId = req.user.groupId || req.user.group_id || null;
     const { itemId } = req.params;
 
-    const updatedPlan = await mealPlanService.updateItem(userId, itemId, req.body);
+    // ✅ FIX: Truyền groupId vào hàm service
+    const updatedPlan = await mealPlanService.updateItem(userId, itemId, req.body, groupId);
 
     if (!updatedPlan) {
       return res.status(404).json({ message: 'Meal item not found or no changes made' });
     }
 
-    res.json({ message: 'Item updated', plan: updatedPlan });
+    // Tìm item vừa update để trả về cho FE tiện hiển thị
+    // (Logic tìm item trong mảng lồng nhau để trả về đúng item đó)
+    let updatedItem = null;
+    updatedPlan.meals.forEach(meal => {
+        const found = meal.items.find(i => i._id.toString() === itemId);
+        if (found) updatedItem = found;
+    });
+
+    res.json({ message: 'Item updated', item: updatedItem });
   } catch (error) {
+    console.error("Update Item Error:", error);
     res.status(400).json({ message: error.message });
   }
 };
 
-// DELETE /api/meal-plans/items/:itemId - Remove item
+// DELETE /api/meal-plans/items/:itemId
 const removeItem = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
+    // ✅ FIX: Lấy thêm groupId từ token
+    const groupId = req.user.groupId || req.user.group_id || null;
     const { itemId } = req.params;
 
-    await mealPlanService.removeItem(userId, itemId);
+    // ✅ FIX: Truyền groupId vào hàm service
+    await mealPlanService.removeItem(userId, itemId, groupId);
+    
     res.json({ message: 'Item removed successfully' });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -201,19 +226,24 @@ const parseFridgeIds = (queryParam) => {
   return queryParam.split(',').map((id) => id.trim());
 };
 
+// GET /api/meal-plans/recipes/search
 const searchRecipes = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
+    // ✅ FIX: Lấy groupId
+    const groupId = req.user.groupId || req.user.group_id || null;
     const { q, page, limit, fridgeIds } = req.query;
 
     const targetFridgeIds = parseFridgeIds(fridgeIds);
 
+    // ✅ FIX: Truyền groupId vào service
     const results = await mealPlanService.searchRecipesForPlan(
       userId,
       q || '',
       targetFridgeIds,
       parseInt(page) || 1,
-      parseInt(limit) || 20
+      parseInt(limit) || 20,
+      groupId // <--- Thêm tham số này
     );
     res.json(results);
   } catch (error) {
@@ -221,17 +251,22 @@ const searchRecipes = async (req, res) => {
   }
 };
 
+// GET /api/meal-plans/recipes/recommendations
 const getRecommendations = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
+    // ✅ FIX: Lấy groupId
+    const groupId = req.user.groupId || req.user.group_id || null;
     const { limit, fridgeIds } = req.query;
 
     const targetFridgeIds = parseFridgeIds(fridgeIds);
 
+    // ✅ FIX: Truyền groupId vào service
     const results = await mealPlanService.getRecommendationsForPlan(
       userId,
       targetFridgeIds,
-      parseInt(limit) || 10
+      parseInt(limit) || 10,
+      groupId // <--- Thêm tham số này
     );
     res.json(results);
   } catch (error) {

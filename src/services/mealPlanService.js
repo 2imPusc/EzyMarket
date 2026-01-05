@@ -2,7 +2,6 @@ import mongoose from 'mongoose';
 import MealPlan from '../model/mealPlanRepository.js';
 import Recipe from '../model/recipeRepository.js';
 import FridgeItem from '../model/fridgeItemRepository.js';
-import Ingredient from '../model/ingredientRepository.js';
 import * as cookingService from './cookingService.js';
 
 // ===============================================
@@ -15,19 +14,24 @@ const normalizeDate = (dateString) => {
   return d;
 };
 
-const normalizeMealType = (type) => (type === 'snack' ? 'snacks' : type);
-
-const getMealIndex = (plan, inputType) => {
-  const t = normalizeMealType(inputType);
-  const idx = plan.meals.findIndex((m) => m.mealType === t);
-  if (idx !== -1) return idx;
-  return plan.meals.findIndex((m) => m.mealType === 'snack');
+// Chuẩn hóa mealType: luôn về lowercase và 'snacks'
+const normalizeMealType = (type) => {
+  if (!type) throw new Error('Meal type is required');
+  const lower = type.toLowerCase().trim();
+  return lower === 'snack' ? 'snacks' : lower;
 };
 
-// ✅ SỬA: buildOwnerQuery hỗ trợ cả MealPlan
+const getMealIndex = (plan, inputType) => {
+  const normalized = normalizeMealType(inputType);
+  const idx = plan.meals.findIndex((m) => m.mealType === normalized);
+  if (idx === -1) {
+    throw new Error(`Invalid meal type '${normalized}'. Plan only contains: ${plan.meals.map(m => m.mealType).join(', ')}`);
+  }
+  return idx;
+};
+
+// ✅ HELPER QUAN TRỌNG: Query theo Group hoặc User
 const buildMealPlanQuery = (userId, groupId) => {
-  // Nếu user có group → query theo groupId
-  // Nếu không có group → query theo userId
   if (groupId) {
     return { groupId: new mongoose.Types.ObjectId(groupId) };
   }
@@ -35,7 +39,7 @@ const buildMealPlanQuery = (userId, groupId) => {
 };
 
 // ===============================================
-//          GET PLAN - SỬA ĐỂ HỖ TRỢ GROUP
+//          GET PLAN
 // ===============================================
 
 export const getPlanByDateRange = async (userId, startDate, endDate, groupId = null) => {
@@ -43,7 +47,6 @@ export const getPlanByDateRange = async (userId, startDate, endDate, groupId = n
   const end = normalizeDate(endDate);
   end.setUTCHours(23, 59, 59, 999);
 
-  // ✅ SỬA: Query theo group nếu có
   const query = {
     ...buildMealPlanQuery(userId, groupId),
     date: { $gte: start, $lte: end },
@@ -61,39 +64,72 @@ export const getPlanByDateRange = async (userId, startDate, endDate, groupId = n
 };
 
 // ===============================================
-//     ADD ITEM - SỬA ĐỂ HỖ TRỢ GROUP
+//     ADD ITEM
+// ===============================================
+
+// ===============================================
+//     ADD ITEM TO MEAL (SỬA LỖI VALIDATION)
 // ===============================================
 
 export const addItemToMeal = async (userId, data, groupId = null) => {
-  const { date, mealType, itemType, recipeId, ingredientId, unitId, quantity, note } = data;
-  const targetDate = normalizeDate(date);
-  const qty = quantity || 1;
+  const { date, mealType, itemType, recipeId, ingredientId, quantity, unitId, note } = data;
 
-  // ✅ SỬA: Query và tạo plan theo group nếu có
-  const ownerQuery = buildMealPlanQuery(userId, groupId);
+  if (!date || !mealType || !itemType || !quantity) {
+    throw new Error('Missing required fields: date, mealType, itemType, quantity');
+  }
+
+  const normalized = normalizeMealType(mealType);
+  const normalizedDate = normalizeDate(date);
   
-  let plan = await MealPlan.findOne({ ...ownerQuery, date: targetDate });
-  if (!plan) {
-    plan = new MealPlan({ 
-      userId, 
-      groupId: groupId || null,  // ✅ THÊM groupId
-      date: targetDate, 
-      meals: [] 
-    });
+  // 1. Tạo query để TÌM KIẾM (Search Query)
+  // Nếu có groupId thì chỉ tìm theo groupId. Nếu không thì tìm theo userId.
+  const searchQuery = buildMealPlanQuery(userId, groupId);
+  
+  // 2. Tìm plan trong database
+  let plan = await MealPlan.findOne({ ...searchQuery, date: normalizedDate });
+
+  // Định nghĩa cấu trúc các bữa ăn mặc định
+  const defaultMeals = [
+    { mealType: 'breakfast', items: [] },
+    { mealType: 'lunch', items: [] },
+    { mealType: 'dinner', items: [] },
+    { mealType: 'snacks', items: [] },
+  ];
+
+  // 3. Logic Tạo Mới (Create) hoặc Sửa Lỗi (Heal)
+  if (!plan || !plan.meals || plan.meals.length === 0) {
+    if (!plan) {
+      // ✅ FIX QUAN TRỌNG NHẤT Ở ĐÂY:
+      // Khi tạo mới, ta KHÔNG ĐƯỢC dùng 'searchQuery' vì nó có thể thiếu userId.
+      // Ta phải gán tường minh userId và groupId.
+      
+      console.log('Creating new plan for User:', userId, 'Group:', groupId); // Log check
+
+      plan = new MealPlan({
+        userId: new mongoose.Types.ObjectId(userId), // <--- BẮT BUỘC PHẢI CÓ
+        groupId: groupId ? new mongoose.Types.ObjectId(groupId) : null,
+        date: normalizedDate,
+        meals: defaultMeals,
+      });
+    } else {
+      // Trường hợp plan đã có nhưng mảng meals bị rỗng (lỗi dữ liệu cũ)
+      plan.meals = defaultMeals;
+    }
+    
     await plan.save();
+    // Reload lại plan để đảm bảo lấy đủ trường
     plan = await MealPlan.findById(plan._id);
   }
 
-  const mealIndex = getMealIndex(plan, mealType);
-  if (mealIndex === -1) {
-    throw new Error(`Invalid meal type: ${mealType}`);
-  }
+  // --- Logic thêm Item vào Meal (như cũ) ---
 
-  // Build new item - status defaults to 'planned'
+  const mealIdx = getMealIndex(plan, normalized);
+  const qty = Number(quantity) || 1;
+
   const newItem = {
     itemType,
     quantity: qty,
-    status: 'planned', // ✅ Luôn bắt đầu với planned
+    status: 'planned',
     isEaten: false,
     note: note || '',
   };
@@ -109,134 +145,143 @@ export const addItemToMeal = async (userId, data, groupId = null) => {
     newItem.unitId = new mongoose.Types.ObjectId(unitId);
   }
 
-  // Check for existing same item and merge quantity (optional behavior)
-  const existingIdx = plan.meals[mealIndex].items.findIndex((item) => {
-    if (item.itemType !== itemType || item.status !== 'planned') return false;
+  // Check trùng item để merge quantity
+  const existingIdx = plan.meals[mealIdx].items.findIndex((item) => {
+    if (item.status !== 'planned') return false; 
+    if (item.itemType !== itemType) return false;
+
     if (itemType === 'recipe') {
-      return item.recipeId?.toString() === recipeId;
+      return item.recipeId && item.recipeId.toString() === recipeId;
     }
     return (
-      item.ingredientId?.toString() === ingredientId &&
-      item.unitId?.toString() === unitId
+      item.ingredientId && item.ingredientId.toString() === ingredientId &&
+      item.unitId && item.unitId.toString() === unitId
     );
   });
 
   if (existingIdx !== -1) {
-    // Merge quantity
-    plan.meals[mealIndex].items[existingIdx].quantity += qty;
+    plan.meals[mealIdx].items[existingIdx].quantity += qty;
   } else {
-    // Add new item
-    plan.meals[mealIndex].items.push(newItem);
+    plan.meals[mealIdx].items.push(newItem);
   }
 
   await plan.save();
 
-  // ❌ KHÔNG gọi consumeFromFridge ở đây nữa
-
-  // Populate và return item mới thêm
   const updatedPlan = await MealPlan.findById(plan._id)
     .populate('meals.items.recipeId', 'title imageUrl prepTime cookTime servings')
     .populate('meals.items.ingredientId', 'name imageURL')
     .populate('meals.items.unitId', 'name abbreviation');
 
-  const mealItems = updatedPlan.meals[mealIndex].items;
-  return mealItems[mealItems.length - 1];
+  const mealItems = updatedPlan.meals[mealIdx].items;
+  return existingIdx !== -1 ? mealItems[existingIdx] : mealItems[mealItems.length - 1];
 };
 
 // ===============================================
-//     BULK ADD - SỬA ĐỂ HỖ TRỢ GROUP
+//     BULK ADD 
 // ===============================================
 
 export const addItemsToMealBulk = async (userId, data, groupId = null) => {
+  // ✅ Lấy mealType từ data tổng (Root Level)
   const { date, mealType, items } = data;
-  const targetDate = normalizeDate(date);
 
-  // ✅ SỬA: Query theo group
-  const ownerQuery = buildMealPlanQuery(userId, groupId);
+  if (!date || !mealType || !Array.isArray(items) || items.length === 0) {
+    throw new Error('Missing required fields: date, mealType, items[]');
+  }
+
+  const normalizedDate = normalizeDate(date);
+  // ✅ Chuẩn hóa mealType 1 lần duy nhất cho cả mảng
+  const normalizedMealType = normalizeMealType(mealType);
   
-  let plan = await MealPlan.findOne({ ...ownerQuery, date: targetDate });
-  if (!plan) {
-    plan = new MealPlan({ 
-      userId, 
-      groupId: groupId || null,  // ✅ THÊM groupId
-      date: targetDate, 
-      meals: [] 
-    });
+  const ownerQuery = buildMealPlanQuery(userId, groupId);
+
+  let plan = await MealPlan.findOne({ ...ownerQuery, date: normalizedDate });
+
+  const defaultMeals = [
+    { mealType: 'breakfast', items: [] },
+    { mealType: 'lunch', items: [] },
+    { mealType: 'dinner', items: [] },
+    { mealType: 'snacks', items: [] },
+  ];
+
+  // Logic tạo mới / sửa lỗi data rỗng (Giữ nguyên logic fix userId)
+  if (!plan || !plan.meals || plan.meals.length === 0) {
+    if (!plan) {
+      plan = new MealPlan({
+        userId: new mongoose.Types.ObjectId(userId),
+        groupId: groupId ? new mongoose.Types.ObjectId(groupId) : null,
+        date: normalizedDate,
+        meals: defaultMeals,
+      });
+    } else {
+      plan.meals = defaultMeals;
+    }
     await plan.save();
     plan = await MealPlan.findById(plan._id);
   }
 
-  const mealIndex = getMealIndex(plan, mealType);
-  if (mealIndex === -1) {
-    throw new Error(`Invalid meal type: ${mealType}`);
-  }
+  // ✅ Tìm index của bữa ăn (VD: dinner) 1 lần duy nhất
+  const mealIndex = getMealIndex(plan, normalizedMealType);
 
-  // Add each item
+  // Xử lý từng item
   for (const item of items) {
+    // ❌ Không lấy mealType từ item nữa
+    const { itemType, recipeId, ingredientId, quantity, unitId, note } = item;
+    
     const newItem = {
-      itemType: item.itemType,
-      quantity: item.quantity || 1,
+      itemType,
+      quantity: quantity || 1,
       status: 'planned',
       isEaten: false,
-      note: item.note || '',
+      note: note || '',
     };
 
-    if (item.itemType === 'recipe') {
-      newItem.recipeId = new mongoose.Types.ObjectId(item.recipeId);
+    if (itemType === 'recipe') {
+      if (!recipeId) throw new Error('recipeId is required for recipe item');
+      newItem.recipeId = new mongoose.Types.ObjectId(recipeId);
     } else {
-      newItem.ingredientId = new mongoose.Types.ObjectId(item.ingredientId);
-      newItem.unitId = new mongoose.Types.ObjectId(item.unitId);
+      if (!ingredientId || !unitId) throw new Error('ingredientId and unitId are required');
+      newItem.ingredientId = new mongoose.Types.ObjectId(ingredientId);
+      newItem.unitId = new mongoose.Types.ObjectId(unitId);
     }
 
+    // Push thẳng vào mealIndex đã tìm được ở trên
     plan.meals[mealIndex].items.push(newItem);
   }
 
   await plan.save();
-
-  // ❌ KHÔNG gọi consumeFromFridge
 
   const updatedPlan = await MealPlan.findById(plan._id)
     .populate('meals.items.recipeId', 'title imageUrl prepTime cookTime servings')
     .populate('meals.items.ingredientId', 'name imageURL')
     .populate('meals.items.unitId', 'name abbreviation');
 
+  // Trả về danh sách items của bữa ăn đó
   return updatedPlan.meals[mealIndex].items;
 };
 
 // ===============================================
-//     COOK PLANNED ITEM - ✅ NEW
+//     COOK PLANNED ITEM
 // ===============================================
 
-/**
- * Nấu một recipe đã được plan
- * - Gọi cookingService để trừ nguyên liệu và tạo món đã nấu
- * - Update status của meal item thành 'cooked'
- * - Link đến cookedFridgeItemId
- */
 export const cookPlannedItem = async (userId, itemId, options = {}) => {
   const { groupId, force = false, cookedExpiryDays = 3 } = options;
-
-  if (!mongoose.Types.ObjectId.isValid(itemId)) {
-    throw new Error('Invalid item ID');
-  }
-
+  if (!mongoose.Types.ObjectId.isValid(itemId)) throw new Error('Invalid item ID');
   const itemObjectId = new mongoose.Types.ObjectId(itemId);
 
-  // Find the meal plan containing this item
+  // ✅ SỬA: Dùng buildMealPlanQuery để hỗ trợ Group
+  const ownerQuery = buildMealPlanQuery(userId, groupId);
   const plan = await MealPlan.findOne({
-    userId,
+    ...ownerQuery,
     'meals.items._id': itemObjectId,
   });
 
-  if (!plan) {
-    throw new Error('Meal item not found');
-  }
+  if (!plan) throw new Error('Meal item not found (check group/personal context)');
 
-  // Find the specific item
   let targetItem = null;
   let targetMealIndex = -1;
   let targetItemIndex = -1;
 
+  // Logic tìm item trong mảng meals (giữ nguyên)
   for (let mi = 0; mi < plan.meals.length; mi++) {
     const meal = plan.meals[mi];
     for (let ii = 0; ii < meal.items.length; ii++) {
@@ -250,18 +295,9 @@ export const cookPlannedItem = async (userId, itemId, options = {}) => {
     if (targetItem) break;
   }
 
-  if (!targetItem) {
-    throw new Error('Meal item not found');
-  }
-
-  // Validate
-  if (targetItem.itemType !== 'recipe') {
-    throw new Error('Only recipe items can be cooked. Use markItemEaten for ingredients.');
-  }
-
-  if (targetItem.status !== 'planned') {
-    throw new Error(`Item is already ${targetItem.status}. Cannot cook again.`);
-  }
+  if (!targetItem) throw new Error('Meal item not found');
+  if (targetItem.itemType !== 'recipe') throw new Error('Only recipe items can be cooked.');
+  if (targetItem.status !== 'planned') throw new Error(`Item is already ${targetItem.status}.`);
 
   // Call cooking service
   const cookResult = await cookingService.cookFromRecipe({
@@ -273,55 +309,42 @@ export const cookPlannedItem = async (userId, itemId, options = {}) => {
     cookedExpiryDays,
   });
 
-  // Update meal item
   plan.meals[targetMealIndex].items[targetItemIndex].status = 'cooked';
   plan.meals[targetMealIndex].items[targetItemIndex].cookedAt = new Date();
   plan.meals[targetMealIndex].items[targetItemIndex].cookedFridgeItemId = cookResult.cookedItem._id;
 
   await plan.save();
 
-  // Return updated item with populated data
   const updatedPlan = await MealPlan.findById(plan._id)
     .populate('meals.items.recipeId', 'title imageUrl prepTime cookTime servings')
     .populate('meals.items.cookedFridgeItemId', 'quantity status expiryDate');
 
-  const updatedItem = updatedPlan.meals[targetMealIndex].items[targetItemIndex];
-
   return {
     message: 'Recipe cooked successfully',
-    item: updatedItem,
+    item: updatedPlan.meals[targetMealIndex].items[targetItemIndex],
     cookingDetails: cookResult,
   };
 };
 
 // ===============================================
-//     MARK ITEM EATEN - ✅ NEW
+//     MARK ITEM EATEN
 // ===============================================
 
-/**
- * Đánh dấu item đã ăn
- * - Với ingredient: trừ từ fridge ngay lập tức
- * - Với recipe đã cooked: trừ từ cooked item trong fridge
- */
 export const markItemEaten = async (userId, itemId, options = {}) => {
-  const { groupId, forceEat = false } = options;  // Thêm forceEat option
-
-  if (!mongoose.Types.ObjectId.isValid(itemId)) {
-    throw new Error('Invalid item ID');
-  }
-
+  const { groupId, forceEat = false } = options;
+  if (!mongoose.Types.ObjectId.isValid(itemId)) throw new Error('Invalid item ID');
   const itemObjectId = new mongoose.Types.ObjectId(itemId);
 
+  // ✅ SỬA: Dùng buildMealPlanQuery
+  const ownerQuery = buildMealPlanQuery(userId, groupId);
   const plan = await MealPlan.findOne({
-    userId,
+    ...ownerQuery,
     'meals.items._id': itemObjectId,
   });
 
-  if (!plan) {
-    throw new Error('Meal item not found');
-  }
+  if (!plan) throw new Error('Meal item not found');
 
-  // Find item
+  // ... (Logic tìm item giữ nguyên) ...
   let targetItem = null;
   let targetMealIndex = -1;
   let targetItemIndex = -1;
@@ -339,11 +362,7 @@ export const markItemEaten = async (userId, itemId, options = {}) => {
     if (targetItem) break;
   }
 
-  if (!targetItem) {
-    throw new Error('Meal item not found');
-  }
-
-  // Validate status
+  if (!targetItem) throw new Error('Meal item not found');
   if (['eaten', 'consumed', 'skipped'].includes(targetItem.status)) {
     throw new Error(`Item is already ${targetItem.status}`);
   }
@@ -351,7 +370,6 @@ export const markItemEaten = async (userId, itemId, options = {}) => {
   let consumptionResult = null;
 
   if (targetItem.itemType === 'ingredient') {
-    // Trừ ingredient từ fridge
     consumptionResult = await consumeIngredientFromFridge(
       userId,
       groupId,
@@ -360,24 +378,13 @@ export const markItemEaten = async (userId, itemId, options = {}) => {
       targetItem.quantity
     );
 
-    // ✅ Kiểm tra kết quả consumption
     if (!consumptionResult.fullyConsumed && !forceEat) {
-      // Không đủ trong fridge và không force
-      throw new Error(
-        `Insufficient ingredient in fridge. ` +
-        `Required: ${targetItem.quantity}, ` +
-        `Available: ${consumptionResult.consumed}, ` +
-        `Missing: ${consumptionResult.remaining}. ` +
-        `Use forceEat=true to mark as eaten anyway.`
-      );
+      throw new Error(`Insufficient ingredient. Missing: ${consumptionResult.remaining}. Use forceEat=true.`);
     }
 
   } else if (targetItem.itemType === 'recipe') {
-    if (targetItem.status === 'planned') {
-      throw new Error('Recipe must be cooked first. Use /cook endpoint.');
-    }
+    if (targetItem.status === 'planned') throw new Error('Recipe must be cooked first. Use /cook endpoint.');
 
-    // Recipe đã cooked → trừ từ cooked fridge item
     if (targetItem.cookedFridgeItemId) {
       const cookedItem = await FridgeItem.findById(targetItem.cookedFridgeItemId);
       if (cookedItem && cookedItem.status === 'in-stock') {
@@ -389,42 +396,38 @@ export const markItemEaten = async (userId, itemId, options = {}) => {
         await cookedItem.save();
         consumptionResult = { consumed: targetItem.quantity, fromCookedItem: true };
       } else if (!forceEat) {
-        throw new Error('Cooked dish not found in fridge. Use forceEat=true to mark as eaten anyway.');
+        throw new Error('Cooked dish not found in fridge. Use forceEat=true.');
       }
     }
   }
 
-  // Update status
   plan.meals[targetMealIndex].items[targetItemIndex].status = 'eaten';
   plan.meals[targetMealIndex].items[targetItemIndex].eatenAt = new Date();
   plan.meals[targetMealIndex].items[targetItemIndex].isEaten = true;
 
   await plan.save();
 
-  // Populate và return item đã cập nhật
   const updatedPlan = await MealPlan.findById(plan._id)
     .populate('meals.items.recipeId', 'title imageUrl prepTime cookTime servings')
     .populate('meals.items.ingredientId', 'name imageURL')
     .populate('meals.items.unitId', 'name abbreviation');
 
   return {
-    message: consumptionResult?.fullyConsumed === false && forceEat
-      ? 'Item marked as eaten (forced - fridge not fully consumed)'
-      : 'Item marked as eaten',
+    message: 'Item marked as eaten',
     item: updatedPlan.meals[targetMealIndex].items[targetItemIndex],
     consumption: consumptionResult,
   };
 };
 
 // ===============================================
-//     CONSUME INGREDIENT FROM FRIDGE (FIFO)
+//     CONSUME INGREDIENT FROM FRIDGE
 // ===============================================
 
 const consumeIngredientFromFridge = async (userId, groupId, ingredientId, unitId, quantity) => {
   let remaining = Number(quantity) || 0;
   if (remaining <= 0) return { consumed: 0, details: [] };
 
-  const ownerQuery = buildOwnerQuery(userId, groupId);
+  const ownerQuery = buildMealPlanQuery(userId, groupId);
 
   const items = await FridgeItem.find({
     ...ownerQuery,
@@ -433,104 +436,71 @@ const consumeIngredientFromFridge = async (userId, groupId, ingredientId, unitId
     unitId: new mongoose.Types.ObjectId(unitId),
     status: 'in-stock',
     quantity: { $gt: 0 },
-  }).sort({ expiryDate: 1 }); // FIFO by expiry
+  }).sort({ expiryDate: 1 });
 
   const details = [];
   let totalConsumed = 0;
 
   for (const item of items) {
     if (remaining <= 0) break;
-
     const take = Math.min(item.quantity, remaining);
-    if (take <= 0) continue;
-
     item.quantity -= take;
     remaining -= take;
     totalConsumed += take;
-
     if (item.quantity <= 0) {
       item.quantity = 0;
       item.status = 'used';
     }
-
     await item.save();
     details.push({ itemId: item._id, taken: take });
   }
 
-  return {
-    consumed: totalConsumed,
-    remaining,
-    details,
-    fullyConsumed: remaining <= 0,
-  };
+  return { consumed: totalConsumed, remaining, details, fullyConsumed: remaining <= 0 };
 };
 
 // ===============================================
-//     CHECK AVAILABILITY FOR PLAN
+//     CHECK AVAILABILITY
 // ===============================================
 
-/**
- * Kiểm tra nguyên liệu có sẵn cho một meal plan
- * Dùng để hiển thị trạng thái và tạo shopping list
- */
 export const checkPlanAvailability = async (userId, planId, options = {}) => {
   const { groupId } = options;
-
-  const plan = await MealPlan.findOne({ _id: planId, userId })
+  // ✅ SỬA: Query theo Group
+  const ownerQuery = buildMealPlanQuery(userId, groupId);
+  
+  const plan = await MealPlan.findOne({ _id: planId, ...ownerQuery })
     .populate('meals.items.recipeId')
     .populate('meals.items.ingredientId')
     .lean();
 
-  if (!plan) {
-    throw new Error('Meal plan not found');
-  }
+  if (!plan) throw new Error('Meal plan not found');
 
+  // ... (Phần logic check giữ nguyên, code cũ đã tốt) ...
   const results = {
     planId: plan._id,
     date: plan.date,
     meals: [],
-    summary: {
-      totalItems: 0,
-      availableItems: 0,
-      missingItems: [],
-    },
+    summary: { totalItems: 0, availableItems: 0, missingItems: [] },
   };
 
   for (const meal of plan.meals) {
-    const mealResult = {
-      mealType: meal.mealType,
-      items: [],
-    };
-
+    const mealResult = { mealType: meal.mealType, items: [] };
     for (const item of meal.items) {
       if (item.status !== 'planned') {
-        // Already cooked/eaten, skip availability check
-        mealResult.items.push({
-          ...item,
-          availability: { status: item.status, checked: false },
-        });
+        mealResult.items.push({ ...item, availability: { status: item.status, checked: false } });
         continue;
       }
-
       results.summary.totalItems++;
       let availability;
 
       if (item.itemType === 'ingredient') {
         availability = await checkIngredientAvailability(
-          userId,
-          groupId,
-          item.ingredientId._id || item.ingredientId,
-          item.unitId,
-          item.quantity
+          userId, groupId, item.ingredientId._id || item.ingredientId, item.unitId, item.quantity
         );
       } else if (item.itemType === 'recipe') {
-        // Use cooking service to check
         const cookCheck = await cookingService.checkCookability({
           recipeId: (item.recipeId._id || item.recipeId).toString(),
           servings: item.quantity,
-          userId,
-          groupId,
-          verbose: true,
+          userId, groupId, verbose: true,
         });
         availability = {
           canCook: cookCheck.canCook,
@@ -539,34 +509,24 @@ export const checkPlanAvailability = async (userId, planId, options = {}) => {
           missing: cookCheck.missing,
         };
       }
-
       if (availability.canCook !== false && availability.available >= availability.required) {
         results.summary.availableItems++;
       } else {
         results.summary.missingItems.push({
           itemType: item.itemType,
-          name: item.itemType === 'recipe' 
-            ? item.recipeId?.title 
-            : item.ingredientId?.name,
+          name: item.itemType === 'recipe' ? item.recipeId?.title : item.ingredientId?.name,
           ...availability,
         });
       }
-
-      mealResult.items.push({
-        ...item,
-        availability,
-      });
+      mealResult.items.push({ ...item, availability });
     }
-
     results.meals.push(mealResult);
   }
-
   return results;
 };
 
 const checkIngredientAvailability = async (userId, groupId, ingredientId, unitId, quantity) => {
-  const ownerQuery = buildOwnerQuery(userId, groupId);
-
+  const ownerQuery = buildMealPlanQuery(userId, groupId);
   const agg = await FridgeItem.aggregate([
     {
       $match: {
@@ -578,126 +538,95 @@ const checkIngredientAvailability = async (userId, groupId, ingredientId, unitId
         quantity: { $gt: 0 },
       },
     },
-    {
-      $group: {
-        _id: null,
-        total: { $sum: '$quantity' },
-      },
-    },
+    { $group: { _id: null, total: { $sum: '$quantity' } } },
   ]);
-
   const available = agg[0]?.total || 0;
   const required = Number(quantity) || 0;
-
-  return {
-    available,
-    required,
-    isEnough: available >= required,
-    missing: Math.max(0, required - available),
-  };
+  return { available, required, isEnough: available >= required, missing: Math.max(0, required - available) };
 };
 
 // ===============================================
-//     UPDATE ITEM (SỬA LẠI - không auto consume)
+//     UPDATE ITEM
 // ===============================================
 
 export const updateItem = async (userId, itemId, updateData, groupId) => {
-  if (!mongoose.Types.ObjectId.isValid(itemId)) {
-    throw new Error('Invalid item ID');
-  }
-
+  if (!mongoose.Types.ObjectId.isValid(itemId)) throw new Error('Invalid item ID');
   const itemObjectId = new mongoose.Types.ObjectId(itemId);
 
-  const plan = await MealPlan.findOne({
-    userId,
-    'meals.items._id': itemObjectId,
-  });
+  // ✅ SỬA: Dùng buildMealPlanQuery
+  const ownerQuery = buildMealPlanQuery(userId, groupId);
+  const plan = await MealPlan.findOne({ ...ownerQuery, 'meals.items._id': itemObjectId });
+  
+  if (!plan) throw new Error('Meal plan/item not found');
 
-  if (!plan) {
-    throw new Error('Meal plan not found');
-  }
+  let currentItem = null;
+  plan.meals.forEach(m => m.items.forEach(i => {
+    if (i._id.equals(itemObjectId)) currentItem = i;
+  }));
 
-  // Build update
-  const setData = {};
-  if (updateData.quantity !== undefined) {
-    setData['meals.$[].items.$[inner].quantity'] = updateData.quantity;
-  }
-  if (updateData.note !== undefined) {
-    setData['meals.$[].items.$[inner].note'] = updateData.note;
-  }
-  if (updateData.unitId !== undefined) {
-    setData['meals.$[].items.$[inner].unitId'] = new mongoose.Types.ObjectId(updateData.unitId);
-  }
-
-  // ❌ Không tự động update isEaten/status ở đây
-  // Dùng markItemEaten hoặc cookPlannedItem thay thế
-
-  if (Object.keys(setData).length === 0) {
-    return null;
-  }
-
-  const updatedPlan = await MealPlan.findOneAndUpdate(
-    { userId, 'meals.items._id': itemObjectId },
-    { $set: setData },
-    {
-      arrayFilters: [{ 'inner._id': itemObjectId }],
-      new: true,
+  if (currentItem && currentItem.status !== 'planned') {
+    if (updateData.quantity !== undefined || updateData.unitId !== undefined) {
+      throw new Error(`Cannot update quantity/unit for item with status '${currentItem.status}'.`);
     }
-  )
-    .populate('meals.items.recipeId', 'title imageUrl prepTime cookTime servings')
-    .populate('meals.items.ingredientId', 'name imageURL')
-    .populate('meals.items.unitId', 'name abbreviation');
+  }
 
-  return updatedPlan;
+  const setData = {};
+  if (updateData.quantity !== undefined) setData['meals.$[].items.$[inner].quantity'] = updateData.quantity;
+  if (updateData.note !== undefined) setData['meals.$[].items.$[inner].note'] = updateData.note;
+  if (updateData.unitId !== undefined) setData['meals.$[].items.$[inner].unitId'] = new mongoose.Types.ObjectId(updateData.unitId);
+
+  if (Object.keys(setData).length === 0) return null;
+
+  // ✅ SỬA: findOneAndUpdate với query đúng
+  return await MealPlan.findOneAndUpdate(
+    { ...ownerQuery, 'meals.items._id': itemObjectId },
+    { $set: setData },
+    { arrayFilters: [{ 'inner._id': itemObjectId }], new: true }
+  ).populate('meals.items.recipeId').populate('meals.items.ingredientId').populate('meals.items.unitId');
 };
 
 // ===============================================
-//     REMOVE ITEM (SỬA LẠI - không hoàn trả)
+//     REMOVE ITEM
 // ===============================================
 
 export const removeItem = async (userId, itemId, groupId) => {
-  if (!mongoose.Types.ObjectId.isValid(itemId)) {
-    throw new Error('Invalid item ID');
-  }
-
+  if (!mongoose.Types.ObjectId.isValid(itemId)) throw new Error('Invalid item ID');
   const itemObjectId = new mongoose.Types.ObjectId(itemId);
+  
+  // ✅ SỬA: Dùng buildMealPlanQuery
+  const ownerQuery = buildMealPlanQuery(userId, groupId);
 
-  // Chỉ đơn giản xóa item, không hoàn trả vì chưa trừ
   const result = await MealPlan.findOneAndUpdate(
-    { userId, 'meals.items._id': itemObjectId },
+    { ...ownerQuery, 'meals.items._id': itemObjectId },
     { $pull: { 'meals.$[].items': { _id: itemObjectId } } },
     { new: true }
   );
 
-  if (!result) {
-    throw new Error('Meal item not found');
-  }
-
+  if (!result) throw new Error('Meal item not found');
   return { message: 'Item removed successfully' };
 };
 
 // ===============================================
-//     SEARCH & RECOMMENDATIONS (giữ nguyên)
+//     SEARCH & COMPLETE (Giữ nguyên)
 // ===============================================
 
-export const searchRecipesForPlan = async (userId, query, targetFridgeIds, page = 1, limit = 20) => {
+// ✅ FIX: Thêm tham số groupId vào cuối
+export const searchRecipesForPlan = async (userId, query, targetFridgeIds, page = 1, limit = 20, groupId = null) => {
   const skip = (page - 1) * limit;
-  const searchQuery = query
-    ? { title: { $regex: query, $options: 'i' } }
-    : {};
+  const searchQuery = query ? { title: { $regex: query, $options: 'i' } } : {};
 
   const recipes = await Recipe.find(searchQuery)
     .skip(skip)
     .limit(limit)
     .lean();
 
-  // Enrich with availability info
   const enriched = await Promise.all(
     recipes.map(async (recipe) => {
+      // ✅ FIX: Truyền groupId vào checkCookability
       const check = await cookingService.checkCookability({
         recipeId: recipe._id.toString(),
         userId,
-        groupId: null,
+        groupId, // <--- Quan trọng: Check kho của Group
       });
       return {
         ...recipe,
@@ -715,16 +644,18 @@ export const searchRecipesForPlan = async (userId, query, targetFridgeIds, page 
   };
 };
 
-export const getRecommendationsForPlan = async (userId, targetFridgeIds, limit = 10) => {
-  // Simple recommendation: recipes that can be cooked
+// ✅ FIX: Thêm tham số groupId vào cuối
+export const getRecommendationsForPlan = async (userId, targetFridgeIds, limit = 10, groupId = null) => {
+  // Simple logic: lấy 50 món đầu (có thể cải thiện logic gợi ý sau)
   const recipes = await Recipe.find().limit(50).lean();
 
   const withAvailability = await Promise.all(
     recipes.map(async (recipe) => {
+      // ✅ FIX: Truyền groupId vào checkCookability
       const check = await cookingService.checkCookability({
         recipeId: recipe._id.toString(),
         userId,
-        groupId: null,
+        groupId, // <--- Quan trọng
       });
       return {
         ...recipe,
@@ -734,7 +665,6 @@ export const getRecommendationsForPlan = async (userId, targetFridgeIds, limit =
     })
   );
 
-  // Sort by canCook first, then by missing count
   return withAvailability
     .sort((a, b) => {
       if (a.canCook && !b.canCook) return -1;
@@ -744,91 +674,44 @@ export const getRecommendationsForPlan = async (userId, targetFridgeIds, limit =
     .slice(0, limit);
 };
 
-// ===============================================
-//     COMPLETE DAY - SỬA QUERY
-// ===============================================
-
-/**
- * Hoàn thành ngày - đánh dấu tất cả items chưa xử lý
- * @param {string} userId
- * @param {string} date
- * @param {object} options
- * @param {string} options.action - 'skip' | 'consume'
- *   - skip: Đánh dấu skipped, KHÔNG trừ fridge
- *   - consume: Cố gắng trừ fridge, nếu không đủ thì skip
- */
 export const completeDayPlan = async (userId, date, options = {}) => {
   const { action = 'skip', groupId } = options;
   const targetDate = normalizeDate(date);
-
-  // ✅ SỬA: Query theo group nếu có
   const ownerQuery = buildMealPlanQuery(userId, groupId);
 
-  const plan = await MealPlan.findOne({
-    ...ownerQuery,
-    date: targetDate,
-  });
-
-  if (!plan) {
-    throw new Error('No meal plan found for this date');
-  }
-
+  const plan = await MealPlan.findOne({ ...ownerQuery, date: targetDate });
+  if (!plan) throw new Error('No meal plan found for this date');
   if (plan.isReconciled) {
-    return {
-      status: 'ALREADY_COMPLETED',
-      message: 'This day has already been completed',
-      completedAt: plan.reconciledAt,
-    };
+    return { status: 'ALREADY_COMPLETED', message: 'This day has already been completed', completedAt: plan.reconciledAt };
   }
 
-  const results = {
-    consumed: [],
-    skipped: [],
-    alreadyProcessed: [],
-  };
+  const results = { consumed: [], skipped: [], alreadyProcessed: [] };
 
   for (let mi = 0; mi < plan.meals.length; mi++) {
     const meal = plan.meals[mi];
-
     for (let ii = 0; ii < meal.items.length; ii++) {
       const item = meal.items[ii];
-
       if (['cooked', 'eaten', 'consumed', 'skipped'].includes(item.status)) {
-        results.alreadyProcessed.push({
-          itemId: item._id,
-          status: item.status,
-        });
+        results.alreadyProcessed.push({ itemId: item._id, status: item.status });
         continue;
       }
-
       if (action === 'skip') {
         plan.meals[mi].items[ii].status = 'skipped';
         plan.meals[mi].items[ii].consumedAt = new Date();
         results.skipped.push({ itemId: item._id });
       } else if (action === 'consume') {
         let consumed = false;
-
         if (item.itemType === 'ingredient') {
           const availability = await checkIngredientAvailability(
-            userId,
-            groupId,
-            item.ingredientId,
-            item.unitId,
-            item.quantity
+            userId, groupId, item.ingredientId, item.unitId, item.quantity
           );
-
           if (availability.isEnough) {
             await consumeIngredientFromFridge(
-              userId,
-              groupId,
-              item.ingredientId,
-              item.unitId,
-              item.quantity
+              userId, groupId, item.ingredientId, item.unitId, item.quantity
             );
             consumed = true;
           }
         }
-
         if (consumed) {
           plan.meals[mi].items[ii].status = 'consumed';
           plan.meals[mi].items[ii].consumedAt = new Date();
@@ -848,12 +731,8 @@ export const completeDayPlan = async (userId, date, options = {}) => {
 
   return {
     status: 'COMPLETED',
-    message: `Day completed: ${results.consumed.length} consumed, ${results.skipped.length} skipped`,
-    summary: {
-      consumed: results.consumed.length,
-      skipped: results.skipped.length,
-      alreadyProcessed: results.alreadyProcessed.length,
-    },
+    message: `Day completed`,
+    summary: { consumed: results.consumed.length, skipped: results.skipped.length },
     details: results,
   };
 };

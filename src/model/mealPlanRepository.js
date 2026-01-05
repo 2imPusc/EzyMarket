@@ -98,7 +98,8 @@ const mealSectionSchema = new mongoose.Schema(
   {
     mealType: {
       type: String,
-      enum: ['breakfast', 'lunch', 'dinner', 'snack', 'snacks'],
+      // FIX: Loại bỏ 'snack' khỏi enum để ép buộc tính nhất quán dữ liệu
+      enum: ['breakfast', 'lunch', 'dinner', 'snacks'],
       required: true,
     },
     items: [mealItemSchema],
@@ -139,45 +140,59 @@ const mealPlanSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ SỬA: Index unique theo groupId hoặc userId + date
-// Nếu có groupId: unique theo groupId + date
-// Nếu không có groupId: unique theo userId + date
+// ✅ SỬA: Index cho group plans (CHỈ khi groupId TỒN TẠI và KHÁC null)
 mealPlanSchema.index(
-  { userId: 1, groupId: 1, date: 1 },
+  { groupId: 1, date: 1 },
   {
     unique: true,
-    partialFilterExpression: { groupId: { $exists: true, $ne: null } },
+    partialFilterExpression: { 
+      groupId: { $exists: true, $ne: null } 
+    },
   }
 );
+
+// ✅ SỬA: Index cho personal plans (CHỈ khi groupId = null hoặc KHÔNG tồn tại)
 mealPlanSchema.index(
   { userId: 1, date: 1 },
   {
     unique: true,
-    partialFilterExpression: { groupId: null },
+    partialFilterExpression: { 
+      $or: [
+        { groupId: { $exists: false } },
+        { groupId: null }
+      ]
+    },
   }
 );
 
 mealPlanSchema.pre('save', function (next) {
+  // ✅ KHÔI PHỤC: Auto-init 4 meals khi tạo mới
   if (this.meals.length === 0) {
-    const types = ['breakfast', 'lunch', 'dinner', 'snacks'];
-    this.meals = types.map((type) => ({ mealType: type, items: [] }));
+    this.meals = [
+      { mealType: 'breakfast', items: [] },
+      { mealType: 'lunch', items: [] },
+      { mealType: 'dinner', items: [] },
+      { mealType: 'snacks', items: [] },
+    ];
   }
 
-  // Update summary counts
-  let totalPlanned = 0,
-    totalCooked = 0,
-    totalEaten = 0;
-  for (const meal of this.meals) {
-    for (const item of meal.items) {
+  // Update summary
+  let totalPlanned = 0;
+  let totalCooked = 0;
+  let totalEaten = 0;
+
+  this.meals.forEach((meal) => {
+    meal.items.forEach((item) => {
       if (item.status === 'planned') totalPlanned++;
       if (item.status === 'cooked') totalCooked++;
-      if (['eaten', 'consumed'].includes(item.status)) totalEaten++;
-    }
-  }
+      if (item.status === 'eaten' || item.isEaten) totalEaten++;
+    });
+  });
+
   this.summary.totalPlanned = totalPlanned;
   this.summary.totalCooked = totalCooked;
   this.summary.totalEaten = totalEaten;
-  this.summary.isFullyCompleted = totalPlanned === 0 && totalCooked === 0;
+  this.summary.isFullyCompleted = totalPlanned > 0 && totalEaten === totalPlanned;
 
   next();
 });
