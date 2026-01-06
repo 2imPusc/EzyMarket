@@ -24,12 +24,23 @@ router.use(authMiddleware.verifyToken);
  *     FridgeItemInput:
  *       type: object
  *       properties:
+ *         itemType:
+ *           type: string
+ *           enum: [ingredient, recipe]
+ *           default: ingredient
+ *           description: Type of item (ingredient or recipe). If ingredient, foodId and unitId are required. If recipe, recipeId is required.
  *         foodId:
  *           type: string
- *           description: MongoDB ObjectId of the ingredient
+ *           nullable: true
+ *           description: MongoDB ObjectId of the ingredient (required if itemType is 'ingredient')
+ *         recipeId:
+ *           type: string
+ *           nullable: true
+ *           description: MongoDB ObjectId of the recipe (required if itemType is 'recipe')
  *         unitId:
  *           type: string
- *           description: MongoDB ObjectId of the unit
+ *           nullable: true
+ *           description: MongoDB ObjectId of the unit (required if itemType is 'ingredient', optional for recipe)
  *         quantity:
  *           type: number
  *           format: float
@@ -44,9 +55,19 @@ router.use(authMiddleware.verifyToken);
  *         status:
  *           type: string
  *           enum: [in-stock, used, expired, discarded]
+ *         cookedFrom:
+ *           type: object
+ *           nullable: true
+ *           description: Trace cooked dish origin (for recipe items)
+ *           properties:
+ *             recipeId:
+ *               type: string
+ *               nullable: true
+ *             cookedAt:
+ *               type: string
+ *               format: date-time
+ *               nullable: true
  *       required:
- *         - foodId
- *         - unitId
  *         - quantity
  *
  *     FridgeItemResponse:
@@ -60,8 +81,14 @@ router.use(authMiddleware.verifyToken);
  *         groupId:
  *           type: string
  *           nullable: true
+ *         itemType:
+ *           type: string
+ *           enum: [ingredient, recipe]
+ *           description: Type of item (ingredient or recipe)
  *         foodId:
  *           type: object
+ *           nullable: true
+ *           description: Ingredient information (populated when itemType is 'ingredient')
  *           properties:
  *             _id:
  *               type: string
@@ -69,8 +96,20 @@ router.use(authMiddleware.verifyToken);
  *               type: string
  *             imageURL:
  *               type: string
+ *               nullable: true
+ *         recipeId:
+ *           type: object
+ *           nullable: true
+ *           description: Recipe information (populated when itemType is 'recipe')
+ *           properties:
+ *             _id:
+ *               type: string
+ *             name:
+ *               type: string
  *         unitId:
  *           type: object
+ *           nullable: true
+ *           description: Unit information (populated when available)
  *           properties:
  *             _id:
  *               type: string
@@ -91,6 +130,22 @@ router.use(authMiddleware.verifyToken);
  *         status:
  *           type: string
  *           enum: [in-stock, used, expired, discarded]
+ *         addedAt:
+ *           type: string
+ *           format: date-time
+ *           description: Date when item was added to fridge
+ *         cookedFrom:
+ *           type: object
+ *           nullable: true
+ *           description: Trace cooked dish origin (for recipe items)
+ *           properties:
+ *             recipeId:
+ *               type: string
+ *               nullable: true
+ *             cookedAt:
+ *               type: string
+ *               format: date-time
+ *               nullable: true
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -135,6 +190,14 @@ router.use(authMiddleware.verifyToken);
  *   post:
  *     tags: [Fridge Items]
  *     summary: Create a fridge item. Owner derived from authenticated user (group if present, otherwise user).
+ *     description: |
+ *       Tạo fridge item mới. Hỗ trợ 2 loại:
+ *       - **Ingredient items** (itemType: 'ingredient'): Cần `foodId` và `unitId`. Nếu không có `expiryDate`, hệ thống sẽ tự động tính từ `ingredient.defaultExpireDays`.
+ *       - **Recipe items** (itemType: 'recipe'): Cần `recipeId`. `unitId` là optional (cho servings).
+ *
+ *       Owner được xác định tự động:
+ *       - Nếu user có `groupId`: item thuộc về group
+ *       - Nếu user không có `groupId`: item thuộc về user cá nhân
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -175,6 +238,17 @@ router.post('/', fridgeItemController.add);
  *   get:
  *     tags: [Fridge Items]
  *     summary: Get fridge items for the authenticated user (group items if user belongs to a group).
+ *     description: |
+ *       Lấy danh sách fridge items với phân trang và lọc.
+ *
+ *       **Owner được xác định tự động:**
+ *       - Nếu user có `groupId`: lấy items của group
+ *       - Nếu user không có `groupId`: lấy items cá nhân của user
+ *
+ *       **Lưu ý:**
+ *       - Chỉ trả về items có `quantity > 0`
+ *       - Response bao gồm populated data (foodId, recipeId, unitId với đầy đủ thông tin)
+ *       - Search chỉ áp dụng cho ingredient name (không áp dụng cho recipe items)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -206,7 +280,7 @@ router.post('/', fridgeItemController.add);
  *         name: search
  *         schema:
  *           type: string
- *         description: Text search (ingredient name) - best-effort, may not be full-text
+ *         description: Text search (ingredient name only, not for recipe items) - best-effort, may not be full-text
  *     responses:
  *       200:
  *         description: Paginated list of fridge items
@@ -228,6 +302,17 @@ router.get('/', fridgeItemController.getAll);
  *   patch:
  *     tags: [Fridge Items]
  *     summary: Update a fridge item. Must be owner (user) or group member.
+ *     description: |
+ *       Cập nhật fridge item. Quyền truy cập được kiểm tra bởi middleware (ownershipMiddleware).
+ *
+ *       **Tính năng tự động:**
+ *       - Nếu cập nhật `quantity` giảm và không cung cấp `price`, hệ thống sẽ tự động tính lại giá theo tỷ lệ (giá đơn vị * số lượng mới).
+ *       - Nếu `quantity` về 0, `price` cũng tự động về 0.
+ *       - Nếu cập nhật `foodId` hoặc `purchaseDate` mà không có `expiryDate`, hệ thống sẽ tự động tính `expiryDate` từ `ingredient.defaultExpireDays` (chỉ cho ingredient items).
+ *
+ *       **Lưu ý:**
+ *       - Response bao gồm populated data (foodId, recipeId, unitId với đầy đủ thông tin)
+ *       - Có thể thay đổi `itemType` nhưng phải cung cấp ID tương ứng (foodId cho ingredient, recipeId cho recipe)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -244,10 +329,22 @@ router.get('/', fridgeItemController.getAll);
  *           schema:
  *             type: object
  *             properties:
+ *               itemType:
+ *                 type: string
+ *                 enum: [ingredient, recipe]
+ *                 description: Type of item. If changing, must provide corresponding ID (foodId for ingredient, recipeId for recipe).
  *               foodId:
  *                 type: string
+ *                 nullable: true
+ *                 description: Required if itemType is 'ingredient'
+ *               recipeId:
+ *                 type: string
+ *                 nullable: true
+ *                 description: Required if itemType is 'recipe'
  *               unitId:
  *                 type: string
+ *                 nullable: true
+ *                 description: Required if itemType is 'ingredient', optional for recipe
  *               quantity:
  *                 type: number
  *               purchaseDate:
@@ -258,6 +355,7 @@ router.get('/', fridgeItemController.getAll);
  *                 format: date-time
  *               price:
  *                 type: number
+ *                 description: If quantity decreases, price will be automatically recalculated proportionally (unless price is explicitly provided).
  *               status:
  *                 type: string
  *                 enum: [in-stock, used, expired, discarded]
@@ -296,11 +394,7 @@ router.get('/', fridgeItemController.getAll);
  *       500:
  *         description: Internal server error
  */
-router.patch(
-  '/:itemId',
-  ownershipMiddleware.verifyItemOwnership,
-  fridgeItemController.update
-);
+router.patch('/:itemId', ownershipMiddleware.verifyItemOwnership, fridgeItemController.update);
 
 /**
  * DELETE /api/fridge-items/{itemId}
@@ -343,10 +437,6 @@ router.patch(
  *       500:
  *         description: Internal server error
  */
-router.delete(
-  '/:itemId',
-  ownershipMiddleware.verifyItemOwnership,
-  fridgeItemController.remove
-);
+router.delete('/:itemId', ownershipMiddleware.verifyItemOwnership, fridgeItemController.remove);
 
 export default router;

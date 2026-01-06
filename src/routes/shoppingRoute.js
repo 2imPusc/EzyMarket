@@ -207,18 +207,12 @@ router.post('/', groupMiddleware.checkGroupExistsOrNull, shoppingController.crea
  *     summary: Get shopping lists (personal or group)
  *     description: |
  *       Lấy danh sách shopping lists. Hệ thống tự động xác định:
- *       - Nếu không có `groupId` trong query: lấy danh sách cá nhân (personal lists)
- *       - Nếu có `groupId` trong query: lấy danh sách của group (cần là member hoặc owner)
+ *       - Nếu user có `groupId` (group chính): lấy danh sách shopping lists của group đó
+ *       - Nếu user không có `groupId`: lấy danh sách cá nhân (personal lists)
+ *       - Hệ thống tự động sử dụng `groupId` từ thông tin user, không cần truyền query parameter
  *     tags: [ShoppingLists]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: groupId
- *         schema:
- *           type: string
- *         required: false
- *         description: Group ID (optional). Nếu không có, sẽ lấy personal shopping lists.
  *     responses:
  *       200:
  *         description: The list of shopping lists
@@ -228,10 +222,6 @@ router.post('/', groupMiddleware.checkGroupExistsOrNull, shoppingController.crea
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/ShoppingList'
- *       403:
- *         description: You are not a member of this group (only when groupId is provided)
- *       404:
- *         description: Group not found (only when groupId is provided and invalid)
  *       500:
  *         description: Server error
  */

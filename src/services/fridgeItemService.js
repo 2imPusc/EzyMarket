@@ -15,31 +15,57 @@ const fridgeItemService = {
       throw new Error('Either userId or groupId is required');
     }
 
-    // Validate required fields
-    if (!data.foodId || !data.unitId || typeof data.quantity === 'undefined') {
-      throw new Error('foodId, unitId, and quantity are required');
+    // Validate required fields based on itemType
+    const itemType = data.itemType || 'ingredient';
+    if (typeof data.quantity === 'undefined') {
+      throw new Error('quantity is required');
     }
 
-    // Nếu không có expiryDate, tự động tính toán từ ingredient.defaultExpireDays
-    if (!data.expiryDate) {
-      const ingredient = await Ingredient.findById(data.foodId);
-      if (!ingredient) {
-        throw new Error('Ingredient not found');
+    if (itemType === 'ingredient') {
+      if (!data.foodId || !data.unitId) {
+        throw new Error('foodId and unitId are required for ingredient items');
       }
-      const purchaseDate = data.purchaseDate ? new Date(data.purchaseDate) : new Date();
-      const expiryDate = new Date(purchaseDate);
-      expiryDate.setDate(purchaseDate.getDate() + (ingredient.defaultExpireDays || 0));
-      data.expiryDate = expiryDate;
+
+      // Nếu không có expiryDate, tự động tính toán từ ingredient.defaultExpireDays
+      if (!data.expiryDate) {
+        const ingredient = await Ingredient.findById(data.foodId);
+        if (!ingredient) {
+          throw new Error('Ingredient not found');
+        }
+        const purchaseDate = data.purchaseDate ? new Date(data.purchaseDate) : new Date();
+        const expiryDate = new Date(purchaseDate);
+        expiryDate.setDate(purchaseDate.getDate() + (ingredient.defaultExpireDays || 0));
+        data.expiryDate = expiryDate;
+      }
+    } else if (itemType === 'recipe') {
+      if (!data.recipeId) {
+        throw new Error('recipeId is required for recipe items');
+      }
+      // Recipe items must have expiryDate (no auto-calculation)
+      if (!data.expiryDate) {
+        throw new Error('expiryDate is required for recipe items');
+      }
+    } else {
+      throw new Error('itemType must be either "ingredient" or "recipe"');
     }
 
     // Thay đổi: dùng "new mongoose.Types.ObjectId(...)" thay vì gọi như hàm
     const newItem = new FridgeItem({
       ...data,
+      itemType: itemType,
       userId: userId ? new mongoose.Types.ObjectId(userId) : null,
       groupId: groupId ? new mongoose.Types.ObjectId(groupId) : null,
     });
     await newItem.save();
-    return newItem.toObject();
+
+    // Populate để trả về đầy đủ thông tin
+    const populated = await FridgeItem.findById(newItem._id)
+      .populate('foodId', 'name imageURL')
+      .populate('recipeId', 'name')
+      .populate('unitId', 'name abbreviation')
+      .lean();
+
+    return populated;
   },
 
   /**
@@ -127,16 +153,23 @@ const fridgeItemService = {
 
     if (!isOwner) throw new Error('Forbidden');
 
-    // If updating expiry/purchase dates, keep previous logic if needed
-    if (!updateData.expiryDate && (updateData.purchaseDate || updateData.foodId)) {
+    // If updating expiry/purchase dates, keep previous logic if needed (only for ingredient items)
+    const itemType = updateData.itemType ?? item.itemType ?? 'ingredient';
+    if (
+      itemType === 'ingredient' &&
+      !updateData.expiryDate &&
+      (updateData.purchaseDate || updateData.foodId)
+    ) {
       // If foodId changed or purchaseDate provided, optionally recalc expiry using ingredient default days
       const foodIdToUse = updateData.foodId ?? item.foodId;
-      const ingredient = await Ingredient.findById(foodIdToUse);
-      if (ingredient && updateData.purchaseDate) {
-        const purchaseDate = new Date(updateData.purchaseDate);
-        const expiryDate = new Date(purchaseDate);
-        expiryDate.setDate(purchaseDate.getDate() + (ingredient.defaultExpireDays || 0));
-        updateData.expiryDate = expiryDate;
+      if (foodIdToUse) {
+        const ingredient = await Ingredient.findById(foodIdToUse);
+        if (ingredient && updateData.purchaseDate) {
+          const purchaseDate = new Date(updateData.purchaseDate);
+          const expiryDate = new Date(purchaseDate);
+          expiryDate.setDate(purchaseDate.getDate() + (ingredient.defaultExpireDays || 0));
+          updateData.expiryDate = expiryDate;
+        }
       }
     }
 
@@ -167,7 +200,11 @@ const fridgeItemService = {
       // Nếu số lượng tăng, giữ nguyên giá cũ (người dùng có thể tự cập nhật price nếu muốn)
     }
 
-    const updated = await FridgeItem.findByIdAndUpdate(itemId, updateData, { new: true }).lean();
+    const updated = await FridgeItem.findByIdAndUpdate(itemId, updateData, { new: true })
+      .populate('foodId', 'name imageURL')
+      .populate('recipeId', 'name')
+      .populate('unitId', 'name abbreviation')
+      .lean();
     return updated;
   },
 
