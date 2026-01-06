@@ -135,81 +135,186 @@ export const getRecipeById = async (recipeId) => {
 
 // --- SEARCH CHUẨN ---
 export const searchRecipes = async ({ q, tagId, page = 1, limit = 20 }) => {
-  const skip = (Math.max(parseInt(page), 1) - 1) * parseInt(limit);
-  const lim = parseInt(limit);
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+  const skip = (pageNum - 1) * limitNum;
+
   const filter = {};
-  if (tagId) {
-    filter.tags = tagId;
-  }
-  let projection = {};
-  let sort = { createdAt: -1 };
-  if (q) {
-    filter.$text = { $search: q };
-    projection = { score: { $meta: 'textScore' } };
-    sort = { score: { $meta: 'textScore' } };
-  }
-  const [recipes, total] = await Promise.all([
-    Recipe.find(filter, projection)
-      .sort(sort)
-      .skip(skip)
-      .limit(lim)
-      .populate('creatorId', 'userName avatar') 
-      // Return full tag info
-      .populate({ path: 'tags', select: '_id name creatorId createdAt updatedAt' })
-      .lean(),
-    Recipe.countDocuments(filter),
+  if (tagId) filter.tags = tagId;
+
+  const queryText = (q || '').toString().trim();
+  if (!queryText) { /* ...existing no-q behavior... */ }
+
+  // q present -> use contains + startsWith priority on title only
+  const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const esc = escapeRegex(queryText);
+  const containsPattern = esc;
+  const startsPattern = '^' + esc;
+
+  const orMatch = [
+    { title: { $regex: containsPattern, $options: 'i' } },
+    { 'ingredients.name': { $regex: containsPattern, $options: 'i' } },
+  ];
+
+  const matchFilters = [];
+  if (Object.keys(filter).length) matchFilters.push(filter);
+  matchFilters.push({ $or: orMatch });
+
+  const matchStage = { $match: matchFilters.length > 1 ? { $and: matchFilters } : matchFilters[0] };
+
+  const addFieldsStage = {
+    $addFields: {
+      starts: {
+        $cond: [
+          { $regexMatch: { input: '$title', regex: startsPattern, options: 'i' } },
+          1,
+          0,
+        ],
+      },
+    },
+  };
+
+  const pipelineResults = [
+    matchStage,
+    addFieldsStage,
+    { $sort: { starts: -1, createdAt: -1, title: 1 } },
+    { $skip: skip },
+    { $limit: limitNum },
+    { $project: { __v: 0 } },
+  ];
+
+  const pipelineCount = [matchStage, { $count: 'count' }];
+
+  const agg = await Recipe.aggregate([
+    { $facet: { results: pipelineResults, totalCount: pipelineCount } },
   ]);
-  return { recipes, total, page: parseInt(page), limit: lim, totalPages: Math.ceil(total / lim) };
+
+  const recipes = (agg[0] && agg[0].results) || [];
+  const total = (agg[0] && agg[0].totalCount && agg[0].totalCount[0] && agg[0].totalCount[0].count) || 0;
+
+  const populated = await Recipe.populate(recipes, [
+    { path: 'creatorId', select: 'userName avatar' },
+    { path: 'tags', select: '_id name creatorId createdAt updatedAt' },
+  ]);
+
+  return { recipes: populated, total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) };
 };
 
+// getMyRecipes - search in title only
 export const getMyRecipes = async (userId, { q, page = 1, limit = 20 }) => {
-  const skip = (Math.max(parseInt(page), 1) - 1) * parseInt(limit);
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+  const skip = (pageNum - 1) * limitNum;
+
   const filter = { creatorId: userId };
-  let projection = {};
-  let sort = { createdAt: -1 };
-  if (q) {
-    filter.$text = { $search: q };
-    projection = { score: { $meta: 'textScore' } };
-    sort = { score: { $meta: 'textScore' } };
-  }
-  const [recipes, total] = await Promise.all([
-    Recipe.find(filter, projection)
-      .sort(sort)
-      .skip(skip)
-      .limit(parseInt(limit))
-      // Return full tag info
-      .populate({ path: 'tags', select: '_id name creatorId createdAt updatedAt' })
-      .lean(),
-    Recipe.countDocuments(filter),
+  const queryText = (q || '').toString().trim();
+
+  if (!queryText) { /* ...existing no-q behavior... */ }
+
+  const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const esc = escapeRegex(queryText);
+  const containsPattern = esc;
+  const startsPattern = '^' + esc;
+
+  const orMatch = [
+    { title: { $regex: containsPattern, $options: 'i' } },
+    { 'ingredients.name': { $regex: containsPattern, $options: 'i' } },
+  ];
+
+  const matchStage = { $match: { $and: [filter, { $or: orMatch }] } };
+
+  const addFieldsStage = {
+    $addFields: {
+      starts: {
+        $cond: [
+          { $regexMatch: { input: '$title', regex: startsPattern, options: 'i' } },
+          1,
+          0,
+        ],
+      },
+    },
+  };
+
+  const pipelineResults = [
+    matchStage,
+    addFieldsStage,
+    { $sort: { starts: -1, createdAt: -1, title: 1 } },
+    { $skip: skip },
+    { $limit: limitNum },
+    { $project: { __v: 0 } },
+  ];
+
+  const pipelineCount = [matchStage, { $count: 'count' }];
+
+  const agg = await Recipe.aggregate([{ $facet: { results: pipelineResults, totalCount: pipelineCount } }]);
+
+  const results = (agg[0] && agg[0].results) || [];
+  const total = (agg[0] && agg[0].totalCount && agg[0].totalCount[0] && agg[0].totalCount[0].count) || 0;
+
+  const populated = await Recipe.populate(results, [
+    { path: 'tags', select: '_id name creatorId createdAt updatedAt' },
   ]);
-  return { recipes, total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) };
+
+  return { recipes: populated, total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) };
 };
 
+// getSystemRecipes - search in title only
 export const getSystemRecipes = async ({ q, tagId, page = 1, limit = 20 }) => {
-  const skip = (Math.max(parseInt(page), 1) - 1) * parseInt(limit);
-  const lim = parseInt(limit);
-  const filter = { creatorId: null }; 
-  if (tagId) {
-      filter.tags = tagId;
-  }
-  let projection = {};
-  let sort = { createdAt: -1 };
-  if (q) {
-    filter.$text = { $search: q };
-    projection = { score: { $meta: 'textScore' } };
-    sort = { score: { $meta: 'textScore' } };
-  }
-  const [recipes, total] = await Promise.all([
-    Recipe.find(filter, projection)
-      .sort(sort)
-      .skip(skip)
-      .limit(lim)
-      // Return full tag info
-      .populate({ path: 'tags', select: '_id name creatorId createdAt updatedAt' })
-      .lean(),
-    Recipe.countDocuments(filter),
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+  const skip = (pageNum - 1) * limitNum;
+
+  const baseFilter = { creatorId: null };
+  if (tagId) baseFilter.tags = tagId;
+
+  const queryText = (q || '').toString().trim();
+  if (!queryText) { /* ...existing no-q behavior... */ }
+
+  const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const esc = escapeRegex(queryText);
+  const containsPattern = esc;
+  const startsPattern = '^' + esc;
+
+  const orMatch = [
+    { title: { $regex: containsPattern, $options: 'i' } },
+    { 'ingredients.name': { $regex: containsPattern, $options: 'i' } },
+  ];
+
+  const matchStage = { $match: { $and: [baseFilter, { $or: orMatch }] } };
+
+  const addFieldsStage = {
+    $addFields: {
+      starts: {
+        $cond: [
+          { $regexMatch: { input: '$title', regex: startsPattern, options: 'i' } },
+          1,
+          0,
+        ],
+      },
+    },
+  };
+
+  const pipelineResults = [
+    matchStage,
+    addFieldsStage,
+    { $sort: { starts: -1, createdAt: -1, title: 1 } },
+    { $skip: skip },
+    { $limit: limitNum },
+    { $project: { __v: 0 } },
+  ];
+
+  const pipelineCount = [matchStage, { $count: 'count' }];
+
+  const agg = await Recipe.aggregate([{ $facet: { results: pipelineResults, totalCount: pipelineCount } }]);
+
+  const results = (agg[0] && agg[0].results) || [];
+  const total = (agg[0] && agg[0].totalCount && agg[0].totalCount[0] && agg[0].totalCount[0].count) || 0;
+
+  const populated = await Recipe.populate(results, [
+    { path: 'tags', select: '_id name creatorId createdAt updatedAt' },
   ]);
-  return { recipes, total, page: parseInt(page), limit: lim, totalPages: Math.ceil(total / lim) };
+
+  return { recipes: populated, total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) };
 };
 
 /**

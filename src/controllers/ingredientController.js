@@ -60,36 +60,103 @@ const ingredientController = {
   // GET ALL - Lấy danh sách nguyên liệu của hệ thống + cá nhân
   getAll: async (req, res) => {
     try {
-      const page = Math.max(parseInt(req.query.page) || 1, 1);
-      const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
       const search = (req.query.search || '').trim();
       const category = (req.query.category || '').trim();
       const scope = (req.query.scope || 'available'); // system | mine | available | all
       const isAdmin = req.user?.role === 'admin';
+      const userId = req.user.id;
 
-      const filter = {};
-      if (scope === 'system') filter.creatorId = null;
-      else if (scope === 'mine') filter.creatorId = req.user.id;
-      else if (scope === 'all' && isAdmin) {
-        // admin xem tất cả: không lọc creatorId
-      } else {
-        // available: system + cá nhân của chính user
-        filter.creatorId = { $in: [null, req.user.id] };
+      // If no search -> simple find (keeps previous behavior)
+      if (!search) {
+        const filter = {};
+        if (scope === 'system') filter.creatorId = null;
+        else if (scope === 'mine') filter.creatorId = userId;
+        else if (scope === 'all' && isAdmin) {
+          // no creator filter
+        } else {
+          filter.creatorId = { $in: [null, userId] };
+        }
+        if (category) filter.foodCategory = category;
+
+        const total = await Ingredient.countDocuments(filter);
+        const ingredients = await Ingredient.find(filter)
+          .sort({ name: 1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean();
+
+        return res.status(200).json({ ingredients, pagination: { page, limit, total } });
       }
 
-      if (search) filter.name = { $regex: new RegExp(search, 'i') };
-      if (category) filter.foodCategory = category;
+      // With search: contains + startsWith priority using aggregation
+      const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const esc = escapeRegex(search);
+      const containsPattern = esc;
+      const startsPattern = '^' + esc;
 
-      const total = await Ingredient.countDocuments(filter);
-      const ingredients = await Ingredient.find(filter)
-        .sort({ name: 1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean();
+      const orMatch = [{ name: { $regex: containsPattern, $options: 'i' } }];
 
-      res.status(200).json({ ingredients, pagination: { page, limit, total } });
+      // build scope/category filters for aggregation
+      const baseFilters = [];
+      if (scope === 'system') baseFilters.push({ creatorId: null });
+      else if (scope === 'mine') baseFilters.push({ creatorId: userId });
+      else if (scope === 'all' && isAdmin) {
+        // no filter
+      } else baseFilters.push({ creatorId: { $in: [null, userId] } });
+
+      if (category) baseFilters.push({ foodCategory: category });
+
+      let matchStage;
+      if (baseFilters.length > 0) {
+        matchStage = { $match: { $and: [{ $or: orMatch }, ...baseFilters] } };
+      } else {
+        matchStage = { $match: { $or: orMatch } };
+      }
+
+      const addFieldsStage = {
+        $addFields: {
+          starts: {
+            $cond: [
+              { $regexMatch: { input: '$name', regex: startsPattern, options: 'i' } },
+              1,
+              0,
+            ],
+          },
+        },
+      };
+
+      const pipelineResults = [
+        matchStage,
+        addFieldsStage,
+        { $sort: { starts: -1, name: 1 } },
+        { $project: { __v: 0 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+      ];
+
+      const pipelineCount = [matchStage, { $count: 'count' }];
+
+      const agg = await Ingredient.aggregate([
+        {
+          $facet: {
+            results: pipelineResults,
+            totalCount: pipelineCount,
+          },
+        },
+      ]);
+
+      const results = (agg[0] && agg[0].results) || [];
+      const total = (agg[0] && agg[0].totalCount && agg[0].totalCount[0] && agg[0].totalCount[0].count) || 0;
+
+      res.status(200).json({
+        ingredients: results,
+        pagination: { page, limit, total },
+      });
     } catch (err) {
-      res.status(500).json({ message: err.message });
+      console.error('Get all ingredients error:', err);
+      res.status(500).json({ message: 'Internal server error' });
     }
   },
 
@@ -207,27 +274,57 @@ const ingredientController = {
       const { id: userId } = req.user;
 
       const text = String(q || '').trim();
-      const query = {};
+      const maxLimit = Math.min(parseInt(limit, 10) || 10, 50);
 
-      if (text) {
-        query.$or = [
-          { name: { $regex: text, $options: 'i' } },
-        ];
+      if (!text) {
+        // fallback: simple find
+        const query = {};
+        if (scope === 'system') query.creatorId = null;
+        else query.creatorId = { $in: [null, userId] };
+
+        const ingredients = await Ingredient.find(query)
+          .select('_id name creatorId')
+          .sort({ name: 1 })
+          .limit(maxLimit)
+          .lean();
+
+        return res.status(200).json({ ingredients });
       }
 
-      // scope: 'system' => only system ingredients; 'available' => system + current user's
-      if (scope === 'system') {
-        query.creatorId = null;
-      } else {
-        query.creatorId = { $in: [null, userId] };
-      }
+      const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const esc = escapeRegex(text);
+      const containsPattern = esc;
+      const startsPattern = '^' + esc;
 
-      const ingredients = await Ingredient.find(query)
-        .select('_id name creatorId')
-        .sort({ name: 1 })
-        .limit(Math.min(parseInt(limit, 10) || 10, 50))
-        .lean();
+      const orMatch = [{ name: { $regex: containsPattern, $options: 'i' } }];
 
+      const baseFilters = [];
+      if (scope === 'system') baseFilters.push({ creatorId: null });
+      else baseFilters.push({ creatorId: { $in: [null, userId] } });
+
+      let matchStage;
+      if (baseFilters.length > 0) matchStage = { $match: { $and: [{ $or: orMatch }, ...baseFilters] } };
+      else matchStage = { $match: { $or: orMatch } };
+
+      const pipeline = [
+        matchStage,
+        {
+          $addFields: {
+            starts: {
+              $cond: [
+                { $regexMatch: { input: '$name', regex: startsPattern, options: 'i' } },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+        { $sort: { starts: -1, name: 1 } },
+        { $project: { _id: 1, name: 1, creatorId: 1 } },
+        { $limit: maxLimit },
+      ];
+
+      const ingredients = await Ingredient.aggregate(pipeline);
       res.status(200).json({ ingredients });
     } catch (err) {
       console.error('Get ingredient suggestions error:', err);
