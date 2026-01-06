@@ -86,21 +86,24 @@ const fridgeItemService = {
 
     if (status) query.status = status;
 
-    // Apply ingredient name search
+    // Apply ingredient/recipe name search (supports searching both ingredient and recipe)
     if (search && String(search).trim().length > 0) {
       const regex = new RegExp(String(search).trim(), 'i');
-      const ingredientIds = await Ingredient.find({ name: regex })
-        .select('_id')
-        .lean()
-        .then((rows) => rows.map((r) => r._id));
+      const [ingredientIds, recipeIds] = await Promise.all([
+        Ingredient.find({ name: regex }).select('_id').lean().then((rows) => rows.map((r) => r._id)),
+        Recipe.find({ name: regex }).select('_id').lean().then((rows) => rows.map((r) => r._id)),
+      ]);
 
-      if (ingredientIds.length === 0) {
+      if (ingredientIds.length === 0 && recipeIds.length === 0) {
         return {
           items: [],
           pagination: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0 },
         };
       }
-      query.foodId = { $in: ingredientIds };
+
+      query.$or = [];
+      if (ingredientIds.length) query.$or.push({ foodId: { $in: ingredientIds } });
+      if (recipeIds.length) query.$or.push({ recipeId: { $in: recipeIds } });
     }
 
     const sortOption = {};
@@ -112,6 +115,7 @@ const fridgeItemService = {
     const [items, total] = await Promise.all([
       FridgeItem.find(query)
         .populate('foodId', 'name imageURL')
+        .populate('recipeId', 'title imageUrl') // <-- now populate recipe items
         .populate('unitId', 'name abbreviation')
         .sort(sortOption)
         .skip(skip)
