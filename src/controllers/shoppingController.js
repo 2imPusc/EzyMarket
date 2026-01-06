@@ -1,5 +1,4 @@
 import shoppingService from '../services/shoppingService.js';
-import Group from '../model/groupRepository.js';
 
 const shoppingController = {
   createShoppingList: async (req, res) => {
@@ -31,23 +30,9 @@ const shoppingController = {
 
   getShoppingLists: async (req, res) => {
     try {
-      const { groupId } = req.query;
       const userId = req.user.id;
-
-      if (groupId) {
-        const group = await Group.findById(groupId);
-
-        if (!group) {
-          return res.status(404).json({ message: 'Group not found' });
-        }
-
-        const isMember = group.members.some((id) => id.toString() === userId);
-        const isOwner = group.ownerId.toString() === userId;
-
-        if (!isMember && !isOwner) {
-          return res.status(403).json({ message: 'You are not a member of this group' });
-        }
-      }
+      // Sử dụng groupId từ middleware (group chính của user)
+      const groupId = req.user.groupId || null;
 
       const lists = await shoppingService.getShoppingLists(groupId, userId);
       res.status(200).json(lists);

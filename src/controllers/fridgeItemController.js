@@ -7,9 +7,26 @@ const fridgeItemController = {
       const itemData = req.body;
       const user = req.user; // phải được gắn bởi authMiddleware
 
-      // Validate input
-      if (!itemData.foodId || !itemData.unitId || !itemData.quantity) {
-        return res.status(400).json({ message: 'foodId, unitId, and quantity are required' });
+      // Validate input based on itemType
+      const itemType = itemData.itemType || 'ingredient';
+      if (typeof itemData.quantity === 'undefined') {
+        return res.status(400).json({ message: 'quantity is required' });
+      }
+
+      if (itemType === 'ingredient') {
+        if (!itemData.foodId || !itemData.unitId) {
+          return res
+            .status(400)
+            .json({ message: 'foodId and unitId are required for ingredient items' });
+        }
+      } else if (itemType === 'recipe') {
+        if (!itemData.recipeId) {
+          return res.status(400).json({ message: 'recipeId is required for recipe items' });
+        }
+      } else {
+        return res
+          .status(400)
+          .json({ message: 'itemType must be either "ingredient" or "recipe"' });
       }
 
       // Xác định owner: nếu user có group thì gán groupId, còn không gán userId
