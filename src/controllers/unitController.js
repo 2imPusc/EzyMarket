@@ -86,54 +86,99 @@ const unitController = {
       const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
       const skip = (pageNum - 1) * limitNum;
 
-      // Build query
-      const query = {};
+      const queryText = (q || '').trim();
 
-      // ✅ Dùng text search nếu có text index
-      if (q.trim()) {
-        query.$text = { $search: q.trim() };
-      }
+      // Helper to escape regex special chars
+      const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-      // Filter by type
-      if (type) {
-        const validTypes = ['weight', 'volume', 'count', 'length', 'area', 'other'];
-        if (validTypes.includes(type)) {
-          query.type = type;
-        }
-      }
-
-      // Build sort
-      let sortOption = {};
-      if (q.trim()) {
-        // Nếu dùng text search, sort by score
-        sortOption = { score: { $meta: 'textScore' }, name: 1 };
-      } else {
+      // If no query text, fallback to normal find with optional type filter and sorting
+      if (!queryText) {
         const validSorts = ['name', '-name', 'type', '-type', 'createdAt', '-createdAt'];
+        let sortOption = {};
         if (validSorts.includes(sort)) {
-          if (sort.startsWith('-')) {
-            sortOption[sort.substring(1)] = -1;
-          } else {
-            sortOption[sort] = 1;
-          }
+          if (sort.startsWith('-')) sortOption[sort.substring(1)] = -1;
+          else sortOption[sort] = 1;
         } else {
           sortOption = { name: 1 };
         }
+
+        const baseQuery = type ? { type } : {};
+        const [units, total] = await Promise.all([
+          Unit.find(baseQuery).select('-__v').sort(sortOption).skip(skip).limit(limitNum),
+          Unit.countDocuments(baseQuery),
+        ]);
+
+        return res.status(200).json({
+          units,
+          pagination: {
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum),
+          },
+          filters: {
+            q: '',
+            type: type || 'all',
+            sort,
+          },
+        });
       }
 
-      const findQuery = Unit.find(query).select('-__v');
+      // Build aggregation: match contains on name or abbreviation, add 'starts' flag for startsWith priority
+      const esc = escapeRegex(queryText);
+      const containsPattern = esc;
+      const startsPattern = '^' + esc;
 
-      // Add score projection if using text search
-      if (q.trim()) {
-        findQuery.select({ score: { $meta: 'textScore' } });
-      }
+      // Build match stage with optional type filter
+      const orMatch = [
+        { name: { $regex: containsPattern, $options: 'i' } },
+        { abbreviation: { $regex: containsPattern, $options: 'i' } },
+      ];
+      const matchStage = type ? { $match: { $and: [{ $or: orMatch }, { type }] } } : { $match: { $or: orMatch } };
 
-      const [units, total] = await Promise.all([
-        findQuery.sort(sortOption).skip(skip).limit(limitNum),
-        Unit.countDocuments(query),
+      const addFieldsStage = {
+        $addFields: {
+          starts: {
+            $cond: [
+              {
+                $or: [
+                  { $regexMatch: { input: '$name', regex: startsPattern, options: 'i' } },
+                  { $regexMatch: { input: '$abbreviation', regex: startsPattern, options: 'i' } },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+      };
+
+      // Sort: prioritize starts (desc), then by name asc
+      const pipelineResults = [
+        matchStage,
+        addFieldsStage,
+        { $sort: { starts: -1, name: 1 } },
+        { $project: { __v: 0 } },
+        { $skip: skip },
+        { $limit: limitNum },
+      ];
+
+      const pipelineCount = [matchStage, { $count: 'count' }];
+
+      const agg = await Unit.aggregate([
+        {
+          $facet: {
+            results: pipelineResults,
+            totalCount: pipelineCount,
+          },
+        },
       ]);
 
+      const results = (agg[0] && agg[0].results) || [];
+      const total = (agg[0] && agg[0].totalCount && agg[0].totalCount[0] && agg[0].totalCount[0].count) || 0;
+
       res.status(200).json({
-        units,
+        units: results,
         pagination: {
           total,
           page: pageNum,
@@ -141,7 +186,7 @@ const unitController = {
           totalPages: Math.ceil(total / limitNum),
         },
         filters: {
-          q: q.trim(),
+          q: queryText,
           type: type || 'all',
           sort,
         },
