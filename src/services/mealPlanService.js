@@ -74,8 +74,8 @@ export const getPlanByDateRange = async (userId, startDate, endDate, groupId = n
 export const addItemToMeal = async (userId, data, groupId = null) => {
   const { date, mealType, itemType, recipeId, ingredientId, quantity, unitId, note } = data;
 
-  if (!date || !mealType || !itemType || !quantity) {
-    throw new Error('Missing required fields: date, mealType, itemType, quantity');
+  if (!date || !mealType || !itemType) {
+    throw new Error('Missing required fields: date, mealType, itemType');
   }
 
   const normalized = normalizeMealType(mealType);
