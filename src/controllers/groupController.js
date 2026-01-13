@@ -7,6 +7,7 @@ import {
   deleteGroup,
 } from '../services/groupService.js';
 import Group from '../model/groupRepository.js';
+import User from '../model/userRepository.js';
 
 const groupController = {
   create: async (req, res) => {
