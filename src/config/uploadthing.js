@@ -60,9 +60,34 @@ export const ourFileRouter = {
       console.log("Avatar updated successfully for user:", updatedUser.email);
       
       // Dữ liệu này sẽ được trả về cho client sau khi upload thành công
-      return { 
+      return {
         uploadedBy: metadata.userId,
         newAvatarUrl: file.url
+      };
+    }),
+
+  // Endpoint cho upload ảnh nguyên liệu và công thức
+  // Backend chỉ upload và trả về URL, không tự động update database
+  // Frontend sẽ gửi URL về backend khi tạo/update ingredient/recipe
+  ingredientImageUploader: f({ image: { maxFileSize: "4MB", maxFileCount: 1 } })
+    .middleware(async ({ req }) => {
+      const userPayload = authenticateUser(req);
+
+      if (!userPayload || !userPayload.id) {
+        throw new Error("Unauthorized! You must be logged in to upload images.");
+      }
+
+      return { userId: userPayload.id };
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      console.log("Ingredient image upload complete for userId:", metadata.userId);
+      console.log("File URL:", file.url);
+
+      // Chỉ trả về URL, không tự động update database
+      // Frontend sẽ gửi URL này về backend khi tạo/update ingredient/recipe
+      return {
+        uploadedBy: metadata.userId,
+        imageUrl: file.url,
       };
     }),
 };
