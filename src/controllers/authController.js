@@ -352,7 +352,10 @@ const authController = {
 
       // Get users with pagination
       const users = await User.find(query)
-        .select('_id userName email role emailVerified phone avatar createdAt updatedAt')
+        .populate('groupId', 'name description')
+        .select(
+          '_id userName email role emailVerified phone avatar groupId name createdAt updatedAt'
+        )
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -367,6 +370,7 @@ const authController = {
         emailVerified: user.emailVerified,
         phone: user.phone,
         avatar: user.avatar,
+        group: user.groupId,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       }));
